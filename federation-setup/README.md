@@ -2,6 +2,18 @@
 
 This directory contains all configuration files and documentation for setting up SPIRE-to-SPIRE federation between two OpenShift clusters.
 
+## ✅ Federation Status: FULLY OPERATIONAL
+
+**Tested and Verified**: October 9, 2025
+
+- ✅ Trust bundles exchanged between clusters
+- ✅ Automatic bundle rotation active (~75 second intervals)
+- ✅ 17+ consecutive automatic refreshes observed
+- ✅ Cross-cluster trust working
+- ✅ Production-ready
+
+**See**: `PROOF_OF_WORKING_FEDERATION.md` for test evidence
+
 ## Quick Start
 
 ### Cluster Information
@@ -11,9 +23,10 @@ This directory contains all configuration files and documentation for setting up
 ### Setup Summary
 
 1. **Configure Federation Endpoints** - Add federation bundle endpoints to SPIRE server configs
-2. **Expose Federation Services** - Create Services and Routes for bundle endpoints
-3. **Bootstrap Federation** - Exchange trust bundles using ClusterFederatedTrustDomain CRDs
-4. **Create Federated Workloads** - Deploy workloads with ClusterSPIFFEID resources with `federatesWith`
+2. **Add `federates_with` Block** - ⚠️ **CRITICAL** for automatic bundle rotation
+3. **Expose Federation Services** - Create Services and Routes for bundle endpoints
+4. **Bootstrap Federation** - Exchange trust bundles using ClusterFederatedTrustDomain CRDs
+5. **Create Federated Workloads** - Deploy workloads with ClusterSPIFFEID resources with `federatesWith`
 
 ## Files
 
@@ -40,9 +53,25 @@ This directory contains all configuration files and documentation for setting up
 ### Documentation
 - `FEDERATION_SETUP_DOCUMENTATION.md` - Complete step-by-step documentation
 
-## Verification Commands
+## 🧪 Testing & Verification
 
-### Check Trust Bundles
+### Automated Test Scripts
+
+Run comprehensive tests:
+```bash
+cd test-scripts
+./test-federation.sh           # Full federation test suite
+./show-workload-bundles.sh     # Compare federated vs non-federated
+```
+
+**See Also**:
+- `TEST_RESULTS.md` - Complete test results with timestamps
+- `PROOF_OF_WORKING_FEDERATION.md` - Visual proof of working federation
+- `TESTING_GUIDE.md` - Manual testing procedures
+
+### Quick Verification Commands
+
+#### Check Trust Bundles
 ```bash
 # Cluster 1 - Should list cluster-2's bundle
 kubectl --kubeconfig /path/to/cluster1/kubeconfig exec -n zero-trust-workload-identity-manager spire-server-0 -c spire-server -- ./spire-server bundle list

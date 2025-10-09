@@ -1,0 +1,171 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: federation-test
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: federated-backend
+  namespace: federation-test
+---
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: federated-backend
+spec:
+  spiffeIDTemplate: "spiffe://apps.cluster-2.devcluster.openshift.com/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
+  podSelector:
+    matchLabels:
+      app: federated-backend
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: federation-test
+  federatesWith:
+  - "apps.cluster-1.devcluster.openshift.com"
+  className: zero-trust-workload-identity-manager-spire
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: federated-backend-script
+  namespace: federation-test
+data:
+  server.sh: |
+    #!/bin/sh
+    set -e
+    
+    echo "=========================================="
+    echo "FEDERATED BACKEND SERVER (Cluster 2)"
+    echo "=========================================="
+    echo ""
+    
+    # Wait for SPIFFE socket
+    echo "Waiting for SPIFFE Workload API socket..."
+    while [ ! -S /spiffe-workload-api/spire-agent.sock ]; do
+      sleep 1
+    done
+    echo "✓ SPIFFE Workload API socket found"
+    echo ""
+    
+    # Fetch and display SVID
+    echo "Fetching X.509 SVID..."
+    /spire-agent api fetch x509 -socketPath /spiffe-workload-api/spire-agent.sock -write /tmp/
+    
+    echo ""
+    echo "My SPIFFE ID:"
+    openssl x509 -in /tmp/svid.0.pem -noout -text | grep "URI:" | head -1
+    
+    echo ""
+    echo "Trust bundles available:"
+    echo "------------------------"
+    # Count certificates in bundle
+    grep -c "BEGIN CERTIFICATE" /tmp/bundle.0.pem || echo "0"
+    echo "certificates in bundle"
+    
+    # Extract trust domain from each cert
+    csplit -s -f /tmp/cert- /tmp/bundle.0.pem '/-----BEGIN CERTIFICATE-----/' '{*}'
+    for cert in /tmp/cert-*; do
+      if [ -s "$cert" ] && grep -q "BEGIN CERTIFICATE" "$cert"; then
+        echo ""
+        echo "Trust domain from cert:"
+        openssl x509 -in "$cert" -noout -text 2>/dev/null | grep "URI" | head -1 || echo "  (not a SPIFFE cert)"
+      fi
+    done
+    
+    echo ""
+    echo "=========================================="
+    echo "Starting simple HTTPS server on port 8443"
+    echo "Configured for mTLS with SPIFFE credentials"
+    echo "=========================================="
+    echo ""
+    
+    # Create a simple response
+    cat > /tmp/response.txt <<EOF
+    HTTP/1.1 200 OK
+    Content-Type: text/plain
+    Connection: close
+
+    SUCCESS: Federated Backend Server (Cluster 2)
+    My SPIFFE ID: $(openssl x509 -in /tmp/svid.0.pem -noout -text | grep "URI:" | head -1)
+    Federation is WORKING!
+    EOF
+    
+    # Run OpenSSL s_server for mTLS
+    while true; do
+      cat /tmp/response.txt | openssl s_server \
+        -accept 8443 \
+        -cert /tmp/svid.0.pem \
+        -key /tmp/svid.0.key \
+        -CAfile /tmp/bundle.0.pem \
+        -verify_return_error \
+        -Verify 1 \
+        -www 2>&1 | grep -E "(ACCEPT|Verify return code|error|BEGIN)" || true
+      sleep 1
+    done
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: federated-backend
+  namespace: federation-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: federated-backend
+  template:
+    metadata:
+      labels:
+        app: federated-backend
+    spec:
+      serviceAccountName: federated-backend
+      containers:
+      - name: server
+        image: registry.redhat.io/ubi9/ubi:latest
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          # Install OpenSSL
+          dnf install -y openssl procps-ng
+          
+          # Download spire-agent binary
+          curl -sL https://github.com/spiffe/spire/releases/download/v1.10.0/spire-1.10.0-linux-amd64-musl.tar.gz | tar xz
+          cp spire-1.10.0/bin/spire-agent /spire-agent
+          chmod +x /spire-agent
+          
+          # Run server script
+          /bin/bash /scripts/server.sh
+        ports:
+        - containerPort: 8443
+          name: https
+        volumeMounts:
+        - name: spiffe-workload-api
+          mountPath: /spiffe-workload-api
+          readOnly: true
+        - name: scripts
+          mountPath: /scripts
+      volumes:
+      - name: spiffe-workload-api
+        csi:
+          driver: csi.spiffe.io
+          readOnly: true
+      - name: scripts
+        configMap:
+          name: federated-backend-script
+          defaultMode: 0755
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: federated-backend
+  namespace: federation-test
+spec:
+  selector:
+    app: federated-backend
+  ports:
+  - port: 8443
+    targetPort: 8443
+    name: https
+

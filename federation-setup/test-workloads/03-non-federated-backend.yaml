@@ -1,0 +1,159 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: non-federated-backend
+  namespace: federation-test
+---
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: non-federated-backend
+spec:
+  spiffeIDTemplate: "spiffe://apps.cluster-2.devcluster.openshift.com/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
+  podSelector:
+    matchLabels:
+      app: non-federated-backend
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: federation-test
+  # NOTE: NO federatesWith field - this workload does NOT have federated bundles
+  className: zero-trust-workload-identity-manager-spire
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: non-federated-backend-script
+  namespace: federation-test
+data:
+  server.sh: |
+    #!/bin/sh
+    set -e
+    
+    echo "=========================================="
+    echo "NON-FEDERATED BACKEND SERVER (Cluster 2)"
+    echo "WITHOUT FEDERATION ENABLED"
+    echo "=========================================="
+    echo ""
+    
+    # Wait for SPIFFE socket
+    echo "Waiting for SPIFFE Workload API socket..."
+    while [ ! -S /spiffe-workload-api/spire-agent.sock ]; do
+      sleep 1
+    done
+    echo "✓ SPIFFE Workload API socket found"
+    echo ""
+    
+    # Fetch and display SVID
+    echo "Fetching X.509 SVID..."
+    /spire-agent api fetch x509 -socketPath /spiffe-workload-api/spire-agent.sock -write /tmp/
+    
+    echo ""
+    echo "My SPIFFE ID:"
+    openssl x509 -in /tmp/svid.0.pem -noout -text | grep "URI:" | head -1
+    
+    echo ""
+    echo "Trust bundles available:"
+    echo "------------------------"
+    grep -c "BEGIN CERTIFICATE" /tmp/bundle.0.pem || echo "0"
+    echo "certificates in bundle"
+    
+    echo ""
+    echo "⚠️  NO FEDERATED BUNDLES (federatesWith not configured)"
+    echo "This workload can only verify SVIDs from its own trust domain"
+    echo ""
+    
+    echo "=========================================="
+    echo "Starting simple HTTPS server on port 8444"
+    echo "Configured for mTLS WITHOUT federation"
+    echo "=========================================="
+    echo ""
+    
+    # Create a simple response
+    cat > /tmp/response.txt <<EOF
+    HTTP/1.1 200 OK
+    Content-Type: text/plain
+    Connection: close
+
+    SUCCESS: Non-Federated Backend Server (Cluster 2)
+    My SPIFFE ID: $(openssl x509 -in /tmp/svid.0.pem -noout -text | grep "URI:" | head -1)
+    But federation is NOT enabled!
+    EOF
+    
+    # Run OpenSSL s_server for mTLS
+    while true; do
+      cat /tmp/response.txt | openssl s_server \
+        -accept 8444 \
+        -cert /tmp/svid.0.pem \
+        -key /tmp/svid.0.key \
+        -CAfile /tmp/bundle.0.pem \
+        -verify_return_error \
+        -Verify 1 \
+        -www 2>&1 | grep -E "(ACCEPT|Verify return code|error|BEGIN)" || true
+      sleep 1
+    done
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: non-federated-backend
+  namespace: federation-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: non-federated-backend
+  template:
+    metadata:
+      labels:
+        app: non-federated-backend
+    spec:
+      serviceAccountName: non-federated-backend
+      containers:
+      - name: server
+        image: registry.redhat.io/ubi9/ubi:latest
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          # Install OpenSSL
+          dnf install -y openssl procps-ng
+          
+          # Download spire-agent binary
+          curl -sL https://github.com/spiffe/spire/releases/download/v1.10.0/spire-1.10.0-linux-amd64-musl.tar.gz | tar xz
+          cp spire-1.10.0/bin/spire-agent /spire-agent
+          chmod +x /spire-agent
+          
+          # Run server script
+          /bin/bash /scripts/server.sh
+        ports:
+        - containerPort: 8444
+          name: https
+        volumeMounts:
+        - name: spiffe-workload-api
+          mountPath: /spiffe-workload-api
+          readOnly: true
+        - name: scripts
+          mountPath: /scripts
+      volumes:
+      - name: spiffe-workload-api
+        csi:
+          driver: csi.spiffe.io
+          readOnly: true
+      - name: scripts
+        configMap:
+          name: non-federated-backend-script
+          defaultMode: 0755
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: non-federated-backend
+  namespace: federation-test
+spec:
+  selector:
+    app: non-federated-backend
+  ports:
+  - port: 8444
+    targetPort: 8444
+    name: https
+

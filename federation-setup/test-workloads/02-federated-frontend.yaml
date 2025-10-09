@@ -1,0 +1,170 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: federation-test
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: federated-frontend
+  namespace: federation-test
+---
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: federated-frontend
+spec:
+  spiffeIDTemplate: "spiffe://apps.cluster-1.devcluster.openshift.com/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
+  podSelector:
+    matchLabels:
+      app: federated-frontend
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: federation-test
+  federatesWith:
+  - "apps.cluster-2.devcluster.openshift.com"
+  className: zero-trust-workload-identity-manager-spire
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: federated-frontend-script
+  namespace: federation-test
+data:
+  client.sh: |
+    #!/bin/bash
+    set -e
+    
+    echo "=========================================="
+    echo "FEDERATED FRONTEND CLIENT (Cluster 1)"
+    echo "=========================================="
+    echo ""
+    
+    # Wait for SPIFFE socket
+    echo "Waiting for SPIFFE Workload API socket..."
+    while [ ! -S /spiffe-workload-api/spire-agent.sock ]; do
+      sleep 1
+    done
+    echo "✓ SPIFFE Workload API socket found"
+    echo ""
+    
+    # Fetch and display SVID
+    echo "Fetching X.509 SVID..."
+    /spire-agent api fetch x509 -socketPath /spiffe-workload-api/spire-agent.sock -write /tmp/
+    
+    echo ""
+    echo "My SPIFFE ID:"
+    openssl x509 -in /tmp/svid.0.pem -noout -text | grep "URI:" | head -1
+    
+    echo ""
+    echo "Trust bundles available:"
+    echo "------------------------"
+    grep -c "BEGIN CERTIFICATE" /tmp/bundle.0.pem || echo "0"
+    echo "certificates in bundle"
+    
+    # Extract trust domain from each cert
+    csplit -s -f /tmp/cert- /tmp/bundle.0.pem '/-----BEGIN CERTIFICATE-----/' '{*}'
+    for cert in /tmp/cert-*; do
+      if [ -s "$cert" ] && grep -q "BEGIN CERTIFICATE" "$cert"; then
+        echo ""
+        echo "Trust domain from cert:"
+        openssl x509 -in "$cert" -noout -text 2>/dev/null | grep "URI" | head -1 || echo "  (not a SPIFFE cert)"
+      fi
+    done
+    
+    echo ""
+    echo "=========================================="
+    echo "Testing mTLS connection to Federated Backend"
+    echo "=========================================="
+    echo ""
+    
+    BACKEND_URL="${BACKEND_URL:-https://federated-backend.federation-test.svc.cluster.local:8443}"
+    
+    while true; do
+      echo "----------------------------------------"
+      echo "$(date) - Attempting connection..."
+      echo "Backend URL: $BACKEND_URL"
+      echo ""
+      
+      # Try to connect using OpenSSL s_client for mTLS
+      RESULT=$(timeout 10 openssl s_client \
+        -connect federated-backend.federation-test.svc.cluster.local:8443 \
+        -cert /tmp/svid.0.pem \
+        -key /tmp/svid.0.key \
+        -CAfile /tmp/bundle.0.pem \
+        -verify_return_error \
+        -servername federated-backend.federation-test.svc.cluster.local 2>&1 <<EOF
+GET / HTTP/1.0
+
+EOF
+      )
+      
+      if echo "$RESULT" | grep -q "SUCCESS.*Federated Backend"; then
+        echo "✅ FEDERATION TEST PASSED!"
+        echo "Successfully connected to backend in Cluster 2"
+        echo ""
+        echo "Response from backend:"
+        echo "$RESULT" | grep -A 5 "SUCCESS"
+      else
+        echo "❌ Connection failed"
+        echo "Verification return code:"
+        echo "$RESULT" | grep "Verify return code" || echo "No verification info"
+      fi
+      
+      echo ""
+      echo "Waiting 30 seconds before next attempt..."
+      sleep 30
+    done
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: federated-frontend
+  namespace: federation-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: federated-frontend
+  template:
+    metadata:
+      labels:
+        app: federated-frontend
+    spec:
+      serviceAccountName: federated-frontend
+      containers:
+      - name: client
+        image: registry.redhat.io/ubi9/ubi:latest
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          # Install OpenSSL and curl
+          dnf install -y openssl curl procps-ng
+          
+          # Download spire-agent binary
+          curl -sL https://github.com/spiffe/spire/releases/download/v1.10.0/spire-1.10.0-linux-amd64-musl.tar.gz | tar xz
+          cp spire-1.10.0/bin/spire-agent /spire-agent
+          chmod +x /spire-agent
+          
+          # Run client script
+          /bin/bash /scripts/client.sh
+        env:
+        - name: BACKEND_URL
+          value: "https://federated-backend.federation-test.svc.cluster.local:8443"
+        volumeMounts:
+        - name: spiffe-workload-api
+          mountPath: /spiffe-workload-api
+          readOnly: true
+        - name: scripts
+          mountPath: /scripts
+      volumes:
+      - name: spiffe-workload-api
+        csi:
+          driver: csi.spiffe.io
+          readOnly: true
+      - name: scripts
+        configMap:
+          name: federated-frontend-script
+          defaultMode: 0755
+
