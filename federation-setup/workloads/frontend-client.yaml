@@ -1,0 +1,112 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: federation-demo
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: frontend-client
+  namespace: federation-demo
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-client-script
+  namespace: federation-demo
+data:
+  client.sh: |
+    #!/bin/sh
+    echo "Starting Frontend Client..."
+    echo "Waiting for SPIFFE credentials..."
+    
+    # Wait for SPIFFE credentials to be available
+    while [ ! -f /spiffe-workload-api/svid.pem ]; do
+      echo "Waiting for SVID..."
+      sleep 2
+    done
+    
+    echo "SPIFFE credentials found!"
+    echo "My SVID Certificate:"
+    openssl x509 -in /spiffe-workload-api/svid.pem -text -noout | grep "Subject:" | head -1
+    openssl x509 -in /spiffe-workload-api/svid.pem -text -noout | grep "URI:" | head -1
+    
+    echo ""
+    echo "Trust Bundle certificates:"
+    csplit -f /tmp/cert- -b %02d.pem /spiffe-workload-api/bundle.pem '/-----BEGIN CERTIFICATE-----/' '{*}' > /dev/null 2>&1
+    for cert in /tmp/cert-*.pem; do
+      if [ -s "$cert" ]; then
+        echo "Certificate from bundle:"
+        openssl x509 -in "$cert" -text -noout 2>/dev/null | grep "Subject:" | head -1
+        openssl x509 -in "$cert" -text -noout 2>/dev/null | grep "URI:" | head -1
+      fi
+    done
+    
+    echo ""
+    echo "Attempting to connect to backend server..."
+    echo "Backend URL: ${BACKEND_URL}"
+    
+    # Try to connect to the backend server using mTLS
+    while true; do
+      echo "================================"
+      echo "$(date): Connecting to backend..."
+      
+      # Use curl to make HTTPS request with mTLS
+      apk add --no-cache curl > /dev/null 2>&1
+      
+      response=$(curl -v --cert /spiffe-workload-api/svid.pem \
+        --key /spiffe-workload-api/svid_key.pem \
+        --cacert /spiffe-workload-api/bundle.pem \
+        "${BACKEND_URL}" 2>&1)
+      
+      echo "$response"
+      
+      if echo "$response" | grep -q "Hello from Backend"; then
+        echo "✓ Successfully communicated with backend using federated mTLS!"
+      else
+        echo "✗ Failed to communicate with backend"
+      fi
+      
+      echo "Waiting 30 seconds before next attempt..."
+      sleep 30
+    done
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-client
+  namespace: federation-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend-client
+  template:
+    metadata:
+      labels:
+        app: frontend-client
+    spec:
+      serviceAccountName: frontend-client
+      containers:
+      - name: client
+        image: alpine:latest
+        command: ["/bin/sh", "/scripts/client.sh"]
+        env:
+        - name: BACKEND_URL
+          value: "https://backend-server.federation-demo.svc.cluster.local:8443"
+        volumeMounts:
+        - name: spiffe-workload-api
+          mountPath: /spiffe-workload-api
+          readOnly: true
+        - name: scripts
+          mountPath: /scripts
+      volumes:
+      - name: spiffe-workload-api
+        csi:
+          driver: csi.spiffe.io
+          readOnly: true
+      - name: scripts
+        configMap:
+          name: frontend-client-script
+          defaultMode: 0755
+

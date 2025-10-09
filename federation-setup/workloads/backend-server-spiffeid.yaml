@@ -1,0 +1,16 @@
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: backend-server
+spec:
+  spiffeIDTemplate: "spiffe://apps.cluster-2.devcluster.openshift.com/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
+  podSelector:
+    matchLabels:
+      app: backend-server
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: federation-demo
+  federatesWith:
+  - "apps.cluster-1.devcluster.openshift.com"
+  className: zero-trust-workload-identity-manager-spire
+

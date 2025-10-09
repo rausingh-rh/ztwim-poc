@@ -1,0 +1,128 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: federation-demo
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backend-server
+  namespace: federation-demo
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-server-script
+  namespace: federation-demo
+data:
+  server.sh: |
+    #!/bin/sh
+    echo "Starting Backend Server..."
+    echo "Waiting for SPIFFE credentials..."
+    
+    # Wait for SPIFFE credentials to be available
+    while [ ! -f /spiffe-workload-api/svid.pem ]; do
+      echo "Waiting for SVID..."
+      sleep 2
+    done
+    
+    echo "SPIFFE credentials found!"
+    echo "SVID Certificate:"
+    openssl x509 -in /spiffe-workload-api/svid.pem -text -noout | grep "Subject:" | head -1
+    openssl x509 -in /spiffe-workload-api/svid.pem -text -noout | grep "URI:" | head -1
+    
+    echo ""
+    echo "Trust Bundle certificates:"
+    csplit -f /tmp/cert- -b %02d.pem /spiffe-workload-api/bundle.pem '/-----BEGIN CERTIFICATE-----/' '{*}' > /dev/null 2>&1
+    for cert in /tmp/cert-*.pem; do
+      if [ -s "$cert" ]; then
+        echo "Certificate from bundle:"
+        openssl x509 -in "$cert" -text -noout 2>/dev/null | grep "Subject:" | head -1
+        openssl x509 -in "$cert" -text -noout 2>/dev/null | grep "URI:" | head -1
+      fi
+    done
+    
+    # Start a simple HTTPS server using OpenSSL
+    echo ""
+    echo "Starting HTTPS server on port 8443..."
+    while true; do
+      echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from Backend Server in Cluster 2!\nMy SPIFFE ID: $(openssl x509 -in /spiffe-workload-api/svid.pem -text -noout | grep 'URI:' | head -1 | awk '{print $1}')\n" | \
+      openssl s_server -accept 8443 \
+        -cert /spiffe-workload-api/svid.pem \
+        -key /spiffe-workload-api/svid_key.pem \
+        -CAfile /spiffe-workload-api/bundle.pem \
+        -verify_return_error \
+        -Verify 1 \
+        -WWW 2>&1 | grep -E "(ACCEPT|Verify|error|URI:)" &
+      sleep 30
+    done
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-server
+  namespace: federation-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend-server
+  template:
+    metadata:
+      labels:
+        app: backend-server
+    spec:
+      serviceAccountName: backend-server
+      containers:
+      - name: server
+        image: alpine:latest
+        command: ["/bin/sh", "/scripts/server.sh"]
+        ports:
+        - containerPort: 8443
+          name: https
+        volumeMounts:
+        - name: spiffe-workload-api
+          mountPath: /spiffe-workload-api
+          readOnly: true
+        - name: scripts
+          mountPath: /scripts
+      volumes:
+      - name: spiffe-workload-api
+        csi:
+          driver: csi.spiffe.io
+          readOnly: true
+      - name: scripts
+        configMap:
+          name: backend-server-script
+          defaultMode: 0755
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-server
+  namespace: federation-demo
+spec:
+  selector:
+    app: backend-server
+  ports:
+  - port: 8443
+    targetPort: 8443
+    protocol: TCP
+    name: https
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: backend-server
+  namespace: federation-demo
+spec:
+  to:
+    kind: Service
+    name: backend-server
+  port:
+    targetPort: https
+  tls:
+    termination: passthrough
+    insecureEdgeTerminationPolicy: Redirect
+

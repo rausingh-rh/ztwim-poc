@@ -1,0 +1,202 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  creationTimestamp: "2025-10-09T10:10:51Z"
+  generation: 2
+  labels:
+    app.kubernetes.io/component: control-plane
+    app.kubernetes.io/instance: cluster-zero-trust-workload-identity-manager
+    app.kubernetes.io/managed-by: zero-trust-workload-identity-manager
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/part-of: zero-trust-workload-identity-manager
+    app.kubernetes.io/version: 1.12.4
+  name: spire-server
+  namespace: zero-trust-workload-identity-manager
+  ownerReferences:
+  - apiVersion: operator.openshift.io/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: SpireServer
+    name: cluster
+    uid: be44ebca-c849-46a7-9fc3-ba3bfc8eb930
+  resourceVersion: "79319"
+  uid: 44fa8833-4d4f-490d-89e0-bf653aa5ddd1
+spec:
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  podManagementPolicy: OrderedReady
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: control-plane
+      app.kubernetes.io/instance: cluster-zero-trust-workload-identity-manager
+      app.kubernetes.io/name: spire-server
+  serviceName: spire-server
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: spire-server
+        kubectl.kubernetes.io/restartedAt: "2025-10-09T15:54:29+05:30"
+        ztwim.openshift.io/spire-controller-manager-config-hash: 5fca31bc4f884180dda068232676161fe6b54e196f7ba70a52bdc66328d58532
+        ztwim.openshift.io/spire-server-config-hash: c7ab37a1e7b91ba956344bb2386b990d9d468ca0264010276b48244ecc787c01
+      creationTimestamp: null
+      labels:
+        app.kubernetes.io/component: control-plane
+        app.kubernetes.io/instance: cluster-zero-trust-workload-identity-manager
+        app.kubernetes.io/managed-by: zero-trust-workload-identity-manager
+        app.kubernetes.io/name: spire-server
+        app.kubernetes.io/part-of: zero-trust-workload-identity-manager
+        app.kubernetes.io/version: 1.12.4
+    spec:
+      containers:
+      - args:
+        - -expandEnv
+        - -config
+        - /run/spire/config/server.conf
+        env:
+        - name: PATH
+          value: /opt/spire/bin:/bin
+        image: registry.redhat.io/zero-trust-workload-identity-manager/spiffe-spire-server-rhel9@sha256:9f9358798ac8aff496daa2fed09763e7bc97547fe3f3420b9de9f4d93d15b218
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 2
+          httpGet:
+            path: /live
+            port: healthz
+            scheme: HTTP
+          initialDelaySeconds: 15
+          periodSeconds: 60
+          successThreshold: 1
+          timeoutSeconds: 3
+        name: spire-server
+        ports:
+        - containerPort: 8081
+          name: grpc
+          protocol: TCP
+        - containerPort: 8080
+          name: healthz
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /ready
+            port: healthz
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /tmp/spire-server/private
+          name: spire-server-socket
+        - mountPath: /run/spire/config
+          name: spire-config
+          readOnly: true
+        - mountPath: /run/spire/data
+          name: spire-data
+        - mountPath: /tmp
+          name: server-tmp
+      - args:
+        - --config=controller-manager-config.yaml
+        env:
+        - name: ENABLE_WEBHOOKS
+          value: "true"
+        image: registry.redhat.io/zero-trust-workload-identity-manager/spiffe-spire-controller-manager-rhel9@sha256:67f0e6670195c84515e7d78139a2951e463db11445740fe1d9a449a7f338556c
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: healthz
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: spire-controller-manager
+        ports:
+        - containerPort: 9443
+          name: https
+          protocol: TCP
+        - containerPort: 8083
+          name: healthz
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /readyz
+            port: healthz
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /tmp/spire-server/private
+          name: spire-server-socket
+          readOnly: true
+        - mountPath: /controller-manager-config.yaml
+          name: controller-manager-config
+          readOnly: true
+          subPath: controller-manager-config.yaml
+        - mountPath: /tmp
+          name: spire-controller-manager-tmp
+          subPath: spire-controller-manager
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      serviceAccount: spire-server
+      serviceAccountName: spire-server
+      shareProcessNamespace: true
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - emptyDir: {}
+        name: server-tmp
+      - configMap:
+          defaultMode: 420
+          name: spire-server
+        name: spire-config
+      - emptyDir: {}
+        name: spire-server-socket
+      - emptyDir: {}
+        name: spire-controller-manager-tmp
+      - configMap:
+          defaultMode: 420
+          name: spire-controller-manager
+        name: controller-manager-config
+  updateStrategy:
+    rollingUpdate:
+      partition: 0
+    type: RollingUpdate
+  volumeClaimTemplates:
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      creationTimestamp: null
+      name: spire-data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 2Gi
+      volumeMode: Filesystem
+    status:
+      phase: Pending
+status:
+  availableReplicas: 1
+  collisionCount: 0
+  currentReplicas: 1
+  currentRevision: spire-server-79cb58bc87
+  observedGeneration: 2
+  readyReplicas: 1
+  replicas: 1
+  updateRevision: spire-server-79cb58bc87
+  updatedReplicas: 1

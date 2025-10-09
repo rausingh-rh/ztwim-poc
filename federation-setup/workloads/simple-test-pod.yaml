@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: backend-test
+  namespace: federation-demo
+  labels:
+    app: backend-server
+spec:
+  serviceAccountName: backend-server
+  containers:
+  - name: test
+    image: gcr.io/spiffe-io/spire-agent:1.12.4
+    command: ["/bin/sh", "-c"]
+    args:
+    - |
+      echo "===== Backend Server Test (Cluster 2) ====="
+      echo "Waiting for SPIFFE credentials..."
+      sleep 5
+      
+      echo ""
+      echo "Fetching X.509 SVID..."
+      /opt/spire/bin/spire-agent api fetch x509 -socketPath /spiffe-workload-api/spire-agent.sock
+      
+      echo ""
+      echo "Checking federated bundles..."
+      /opt/spire/bin/spire-agent api fetch jwt -socketPath /spiffe-workload-api/spire-agent.sock -audience test || true
+      
+      echo ""
+      echo "Keeping pod alive..."
+      tail -f /dev/null
+    volumeMounts:
+    - name: spiffe-workload-api
+      mountPath: /spiffe-workload-api
+      readOnly: true
+  volumes:
+  - name: spiffe-workload-api
+    csi:
+      driver: csi.spiffe.io
+      readOnly: true
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: frontend-test
+  namespace: federation-demo
+  labels:
+    app: frontend-client
+spec:
+  serviceAccountName: frontend-client
+  containers:
+  - name: test
+    image: gcr.io/spiffe-io/spire-agent:1.12.4
+    command: ["/bin/sh", "-c"]
+    args:
+    - |
+      echo "===== Frontend Client Test (Cluster 1) ====="
+      echo "Waiting for SPIFFE credentials..."
+      sleep 5
+      
+      echo ""
+      echo "Fetching X.509 SVID..."
+      /opt/spire/bin/spire-agent api fetch x509 -socketPath /spiffe-workload-api/spire-agent.sock
+      
+      echo ""
+      echo "Checking federated bundles..."
+      /opt/spire/bin/spire-agent api fetch jwt -socketPath /spiffe-workload-api/spire-agent.sock -audience test || true
+      
+      echo ""
+      echo "Keeping pod alive..."
+      tail -f /dev/null
+    volumeMounts:
+    - name: spiffe-workload-api
+      mountPath: /spiffe-workload-api
+      readOnly: true
+  volumes:
+  - name: spiffe-workload-api
+    csi:
+      driver: csi.spiffe.io
+      readOnly: true
+
