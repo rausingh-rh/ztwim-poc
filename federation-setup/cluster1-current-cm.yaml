@@ -92,6 +92,16 @@ data:
           "bundle_endpoint": {
             "address": "0.0.0.0",
             "port": 8443
+          },
+          "federates_with": {
+            "apps.cluster-2.devcluster.openshift.com": {
+              "bundle_endpoint_url": "https://spire-server-federation-zero-trust-workload-identity-manager.apps.cluster-2.devcluster.openshift.com",
+              "bundle_endpoint_profile": {
+                "https_spiffe": {
+                  "endpoint_spiffe_id": "spiffe://apps.cluster-2.devcluster.openshift.com/spire/server"
+                }
+              }
+            }
           }
         }
       },

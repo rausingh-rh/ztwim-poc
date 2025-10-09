@@ -44,6 +44,16 @@ For each cluster, update the SPIRE server ConfigMap to add the federation bundle
       "bundle_endpoint": {
         "address": "0.0.0.0",
         "port": 8443
+      },
+      "federates_with": {
+        "apps.cluster-2.devcluster.openshift.com": {
+          "bundle_endpoint_url": "https://spire-server-federation-zero-trust-workload-identity-manager.apps.cluster-2.devcluster.openshift.com",
+          "bundle_endpoint_profile": {
+            "https_spiffe": {
+              "endpoint_spiffe_id": "spiffe://apps.cluster-2.devcluster.openshift.com/spire/server"
+            }
+          }
+        }
       }
     }
   }
@@ -64,6 +74,16 @@ kubectl --kubeconfig /path/to/cluster1/kubeconfig apply -f federation-setup/clus
       "bundle_endpoint": {
         "address": "0.0.0.0",
         "port": 8443
+      },
+      "federates_with": {
+        "apps.cluster-1.devcluster.openshift.com": {
+          "bundle_endpoint_url": "https://spire-server-federation-zero-trust-workload-identity-manager.apps.cluster-1.devcluster.openshift.com",
+          "bundle_endpoint_profile": {
+            "https_spiffe": {
+              "endpoint_spiffe_id": "spiffe://apps.cluster-1.devcluster.openshift.com/spire/server"
+            }
+          }
+        }
       }
     }
   }
@@ -383,16 +403,59 @@ This setup uses **SPIFFE Authentication (https_spiffe)** profile for the federat
 1. **Initial Bootstrap**: 
    - Trust bundles are manually extracted from each SPIRE server
    - ClusterFederatedTrustDomain resources are created with the initial bundles
+   - The `federates_with` block in SPIRE server config tells the server WHERE to fetch federated bundles
 
-2. **Automatic Updates**:
-   - After bootstrap, SPIRE servers automatically fetch bundle updates from each other's endpoints
-   - The SPIRE controller-manager watches ClusterFederatedTrustDomain resources
-   - Bundle updates are propagated automatically
+2. **Automatic Updates (Bundle Rotation)**:
+   - The `federates_with` configuration enables automatic bundle rotation
+   - Each SPIRE server polls the federated endpoint periodically (default: every 5 minutes as indicated by `refresh_hint`)
+   - When certificates are rotated in either trust domain, the changes propagate automatically
+   - The SPIRE controller-manager watches ClusterFederatedTrustDomain resources for management
+   - Bundle updates are propagated to all workloads automatically
 
 3. **SVID Issuance with Federation**:
    - Workloads with `federatesWith` in their ClusterSPIFFEID receive their own trust domain's SVID
    - They also receive the federated trust domain's bundle
    - This enables mutual TLS authentication across trust domains
+
+### Why `federates_with` Block is Critical
+
+The `federates_with` configuration block in the SPIRE server config is **essential for automatic bundle rotation**:
+
+**Without `federates_with`:**
+- The SPIRE server only has the initial trust bundle provided via ClusterFederatedTrustDomain
+- No automatic updates occur when certificates rotate
+- Manual intervention is required to update bundles
+- Federation breaks when certificates expire
+
+**With `federates_with`:**
+- The SPIRE server automatically polls the federated endpoint
+- Bundle updates are fetched and applied automatically
+- Certificate rotation is seamless with zero downtime
+- The system is self-healing and maintenance-free
+
+**Configuration Breakdown:**
+```json
+"federates_with": {
+  "apps.cluster-2.devcluster.openshift.com": {              // Federated trust domain
+    "bundle_endpoint_url": "https://...",                    // Where to fetch the bundle
+    "bundle_endpoint_profile": {                             // How to authenticate
+      "https_spiffe": {                                      // Use SPIFFE auth
+        "endpoint_spiffe_id": "spiffe://.../spire/server"   // Expected server identity
+      }
+    }
+  }
+}
+```
+
+**Verification of Automatic Rotation:**
+```bash
+# Check SPIRE server logs for bundle refresh activity
+kubectl logs -n zero-trust-workload-identity-manager spire-server-0 -c spire-server | grep "Bundle refresh"
+
+# Expected output:
+# time="..." level=info msg="Bundle refreshed" subsystem_name=bundle_client trust_domain=...
+# time="..." level=debug msg="Scheduling next bundle refresh" at="..." subsystem_name=bundle_client
+```
 
 ## Verification Results
 
@@ -401,10 +464,21 @@ This setup uses **SPIFFE Authentication (https_spiffe)** profile for the federat
 ✅ **Cluster 1 SPIRE Server**:
 - Successfully fetched and stored Cluster 2's trust bundle
 - Trust domain: `apps.cluster-2.devcluster.openshift.com`
+- Automatic bundle rotation: **ACTIVE** ✓
+  ```
+  time="2025-10-09T10:50:22Z" level=info msg="Bundle refreshed" 
+  time="2025-10-09T10:51:37Z" level=info msg="Bundle refreshed"  (automatic refresh)
+  time="2025-10-09T10:51:37Z" level=debug msg="Scheduling next bundle refresh" at="2025-10-09T10:52:52Z"
+  ```
 
 ✅ **Cluster 2 SPIRE Server**:
 - Successfully fetched and stored Cluster 1's trust bundle
 - Trust domain: `apps.cluster-1.devcluster.openshift.com`
+- Automatic bundle rotation: **ACTIVE** ✓
+  ```
+  time="2025-10-09T10:51:40Z" level=info msg="Bundle refreshed"
+  time="2025-10-09T10:51:40Z" level=debug msg="Scheduling next bundle refresh" at="2025-10-09T10:52:55Z"
+  ```
 
 ### Registration Entries
 
