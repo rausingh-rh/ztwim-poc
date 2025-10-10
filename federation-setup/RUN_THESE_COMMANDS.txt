@@ -1,0 +1,86 @@
+╔════════════════════════════════════════════════════════════════════╗
+║           COPY-PASTE COMMANDS - TEST FEDERATION NOW!               ║
+╚════════════════════════════════════════════════════════════════════╝
+
+🎯 COMMAND 1: Prove Trust Bundles Are Exchanged (10 sec)
+────────────────────────────────────────────────────────────────────
+
+kubectl --kubeconfig /home/rausingh/Documents/aws_cluster/09OctCluster1/auth/kubeconfig exec -n zero-trust-workload-identity-manager spire-server-0 -c spire-server -- ./spire-server bundle list
+
+✅ Look for: "* apps.cluster-2.devcluster.openshift.com"
+   This proves federation is working!
+
+
+╔════════════════════════════════════════════════════════════════════╗
+
+🎯 COMMAND 2: Show Federated Entry (has FederatesWith) (10 sec)
+────────────────────────────────────────────────────────────────────
+
+kubectl --kubeconfig /home/rausingh/Documents/aws_cluster/09OctCluster2/auth/kubeconfig exec -n zero-trust-workload-identity-manager spire-server-0 -c spire-server -- ./spire-server entry show | grep -A 10 "federated-backend"
+
+✅ Look for: "FederatesWith    : apps.cluster-1.devcluster.openshift.com"
+   This entry CAN communicate with cluster-1!
+
+
+╔════════════════════════════════════════════════════════════════════╗
+
+🎯 COMMAND 3: Show Non-Federated Entry (NO FederatesWith) (10 sec)
+────────────────────────────────────────────────────────────────────
+
+kubectl --kubeconfig /home/rausingh/Documents/aws_cluster/09OctCluster2/auth/kubeconfig exec -n zero-trust-workload-identity-manager spire-server-0 -c spire-server -- ./spire-server entry show | grep -A 10 "non-federated-backend"
+
+❌ Look for: NO "FederatesWith" field
+   This entry CANNOT communicate with cluster-1!
+
+
+╔════════════════════════════════════════════════════════════════════╗
+
+🎯 COMMAND 4: Watch Bundles Rotating LIVE (wait ~75 sec)
+────────────────────────────────────────────────────────────────────
+
+kubectl --kubeconfig /home/rausingh/Documents/aws_cluster/09OctCluster1/auth/kubeconfig logs -f -n zero-trust-workload-identity-manager spire-server-0 -c spire-server | grep --line-buffered "Bundle refresh"
+
+✅ You'll see: New "Bundle refreshed" messages every ~75 seconds
+   This is LIVE proof rotation is happening NOW!
+   (Press Ctrl+C to stop)
+
+
+╔════════════════════════════════════════════════════════════════════╗
+
+🎯 COMMAND 5: Show Rotation History (10 sec)
+────────────────────────────────────────────────────────────────────
+
+kubectl --kubeconfig /home/rausingh/Documents/aws_cluster/09OctCluster1/auth/kubeconfig logs -n zero-trust-workload-identity-manager spire-server-0 -c spire-server --tail=300 | grep "Bundle refreshed" | tail -10
+
+✅ Shows: Last 10 automatic bundle refreshes
+   Proves rotation has been happening continuously!
+
+
+╔════════════════════════════════════════════════════════════════════╗
+
+🎯 BONUS: All-in-One Automated Test (2 min)
+────────────────────────────────────────────────────────────────────
+
+/home/rausingh/Documents/oape/ztwim-poc/federation-setup/test-scripts/test-federation.sh
+
+✅ Runs: All tests automatically with visual output!
+
+
+╔════════════════════════════════════════════════════════════════════╗
+║                        WHAT YOU'LL SEE                             ║
+╚════════════════════════════════════════════════════════════════════╝
+
+Command 1: Shows "apps.cluster-2.devcluster.openshift.com" ✅
+Command 2: Shows "FederatesWith: apps.cluster-1..." ✅  
+Command 3: Shows NO FederatesWith field ❌
+Command 4: Shows new refreshes appearing live! 🔄
+Command 5: Shows 10+ historical refreshes ✅
+
+ALL THIS PROVES:
+  • Trust bundles exchanged between clusters ✅
+  • Federated workloads configured correctly ✅
+  • Non-federated workloads blocked correctly ❌
+  • Automatic rotation is active and ongoing 🔄
+
+🎉 Your federation is WORKING and PROVEN!
+

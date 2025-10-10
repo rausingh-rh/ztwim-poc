@@ -1,0 +1,191 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: non-federated-frontend
+  namespace: federation-demo
+---
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: non-federated-frontend
+spec:
+  spiffeIDTemplate: "spiffe://apps.cluster-1.devcluster.openshift.com/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
+  podSelector:
+    matchLabels:
+      app: non-federated-frontend
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: federation-demo
+  # NO federatesWith field - this workload does NOT have federated bundles
+  className: zero-trust-workload-identity-manager-spire
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: non-federated-frontend-app
+  namespace: federation-demo
+data:
+  main.go: |
+    package main
+
+    import (
+        "context"
+        "crypto/tls"
+        "fmt"
+        "io"
+        "log"
+        "net/http"
+        "time"
+
+        "github.com/spiffe/go-spiffe/v2/spiffeid"
+        "github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
+        "github.com/spiffe/go-spiffe/v2/workloadapi"
+    )
+
+    func main() {
+        ctx, cancel := context.WithCancel(context.Background())
+        defer cancel()
+
+        socketPath := "unix:///spiffe-workload-api/spire-agent.sock"
+        log.Printf("🚀 Starting NON-FEDERATED Frontend Client (Cluster 1)")
+        log.Printf("⚠️  WARNING: This frontend does NOT have federation enabled!")
+        log.Printf("📡 Connecting to SPIFFE Workload API at: %s", socketPath)
+
+        // Create X.509 source
+        source, err := workloadapi.NewX509Source(ctx, workloadapi.WithClientOptions(workloadapi.WithAddr(socketPath)))
+        if err != nil {
+            log.Fatalf("❌ Unable to create X509Source: %v", err)
+        }
+        defer source.Close()
+
+        // Get SVID to display identity
+        svid, err := source.GetX509SVID()
+        if err != nil {
+            log.Fatalf("❌ Unable to get X509 SVID: %v", err)
+        }
+        log.Printf("✅ My SPIFFE ID: %s", svid.ID)
+
+        // Get bundle to see trust domains
+        bundle, err := source.GetX509BundleForTrustDomain(spiffeid.RequireTrustDomainFromString("apps.cluster-1.devcluster.openshift.com"))
+        if err != nil {
+            log.Printf("⚠️  Could not get own bundle: %v", err)
+        } else {
+            log.Printf("✅ Own trust bundle loaded: %d certificates", len(bundle.X509Authorities()))
+        }
+
+        // Check for federated bundle (should NOT exist)
+        federatedBundle, err := source.GetX509BundleForTrustDomain(spiffeid.RequireTrustDomainFromString("apps.cluster-2.devcluster.openshift.com"))
+        if err != nil {
+            log.Printf("❌ No federated bundle for cluster-2 (EXPECTED - federation not configured)")
+        } else {
+            log.Printf("⚠️  UNEXPECTED: Has federated bundle with %d certificates", len(federatedBundle.X509Authorities()))
+        }
+
+        // Create TLS config with SPIFFE authentication
+        tlsConfig := tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeAny())
+        client := &http.Client{
+            Transport: &http.Transport{
+                TLSClientConfig: tlsConfig,
+            },
+            Timeout: 10 * time.Second,
+        }
+
+        backendURL := "https://non-federated-backend.federation-demo.svc.cluster.local:8444"
+        
+        log.Printf("")
+        log.Printf("🎯 Target backend: %s", backendURL)
+        log.Printf("⚠️  Expected result: CONNECTION WILL FAIL (no federated bundle)")
+        log.Printf("🔄 Will attempt connection every 30 seconds...")
+        log.Printf("")
+
+        for {
+            log.Printf("═══════════════════════════════════════════════════════")
+            log.Printf("⏰ %s - Attempting mTLS connection to non-federated backend...", time.Now().Format("15:04:05"))
+            
+            resp, err := client.Get(backendURL)
+            if err != nil {
+                log.Printf("❌ Connection FAILED (EXPECTED): %v", err)
+                log.Printf("")
+                log.Printf("🎯 This is CORRECT behavior!")
+                log.Printf("   Reason: Client does not have cluster-2's trust bundle")
+                log.Printf("   Cannot verify backend's SVID from cluster-2")
+                log.Printf("")
+                log.Printf("✅ This proves federation is required for cross-cluster communication!")
+            } else {
+                defer resp.Body.Close()
+                body, _ := io.ReadAll(resp.Body)
+                
+                log.Printf("⚠️  UNEXPECTED: Connection succeeded!")
+                log.Printf("📨 Response from backend:")
+                log.Printf("─────────────────────────────────────────────────────")
+                fmt.Println(string(body))
+                log.Printf("─────────────────────────────────────────────────────")
+            }
+            
+            log.Printf("")
+            log.Printf("⏳ Waiting 30 seconds before next request...")
+            time.Sleep(30 * time.Second)
+        }
+    }
+  go.mod: |
+    module frontend
+
+    go 1.21
+
+    require github.com/spiffe/go-spiffe/v2 v2.1.7
+
+    require (
+        github.com/Microsoft/go-winio v0.6.1 // indirect
+        github.com/go-jose/go-jose/v3 v3.0.1 // indirect
+        github.com/zeebo/errs v1.3.0 // indirect
+        golang.org/x/crypto v0.17.0 // indirect
+        golang.org/x/mod v0.8.0 // indirect
+        golang.org/x/sys v0.15.0 // indirect
+        golang.org/x/tools v0.6.0 // indirect
+        google.golang.org/genproto/googleapis/rpc v0.0.0-20230822172742-b8732ec3820d // indirect
+        google.golang.org/grpc v1.59.0 // indirect
+        google.golang.org/protobuf v1.31.0 // indirect
+    )
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: non-federated-frontend
+  namespace: federation-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: non-federated-frontend
+  template:
+    metadata:
+      labels:
+        app: non-federated-frontend
+    spec:
+      serviceAccountName: non-federated-frontend
+      containers:
+      - name: frontend
+        image: golang:1.21
+        workingDir: /app
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          cp /config/* /app/
+          go mod download
+          go run main.go
+        volumeMounts:
+        - name: spiffe-workload-api
+          mountPath: /spiffe-workload-api
+          readOnly: true
+        - name: config
+          mountPath: /config
+      volumes:
+      - name: spiffe-workload-api
+        csi:
+          driver: csi.spiffe.io
+          readOnly: true
+      - name: config
+        configMap:
+          name: non-federated-frontend-app
+

@@ -1,0 +1,223 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: federated-frontend
+  namespace: federation-demo
+---
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: federated-frontend
+spec:
+  spiffeIDTemplate: "spiffe://apps.cluster-1.devcluster.openshift.com/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
+  podSelector:
+    matchLabels:
+      app: federated-frontend
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: federation-demo
+  federatesWith:
+  - "apps.cluster-2.devcluster.openshift.com"
+  className: zero-trust-workload-identity-manager-spire
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: federated-frontend-api
+  namespace: federation-demo
+data:
+  app.py: |
+    from flask import Flask, jsonify
+    import requests
+    import subprocess
+    import time
+    import threading
+    from datetime import datetime
+
+    app = Flask(__name__)
+
+    backend_url = "http://federated-backend.federation-demo.svc.cluster.local:8080/api/data"
+
+    def get_spiffe_info():
+        try:
+            result = subprocess.run(
+                ['/spire-agent', 'api', 'fetch', 'x509', 
+                 '-socketPath', '/spiffe-workload-api/spire-agent.sock',
+                 '-write', '/tmp/'],
+                capture_output=True, text=True, timeout=10
+            )
+            
+            svid_result = subprocess.run(
+                ['openssl', 'x509', '-in', '/tmp/svid.0.pem', '-noout', '-text'],
+                capture_output=True, text=True
+            )
+            
+            spiffe_id = "unknown"
+            for line in svid_result.stdout.split('\n'):
+                if 'URI:spiffe://' in line:
+                    spiffe_id = line.strip().split('URI:')[1]
+                    break
+            
+            bundle_count = subprocess.run(
+                ['grep', '-c', 'BEGIN CERTIFICATE', '/tmp/bundle.0.pem'],
+                capture_output=True, text=True
+            )
+            
+            return {
+                'spiffe_id': spiffe_id,
+                'bundle_count': int(bundle_count.stdout.strip()) if bundle_count.returncode == 0 else 0
+            }
+        except Exception as e:
+            return {'error': str(e)}
+
+    def call_backend_loop():
+        time.sleep(15)  # Wait for backend to be ready
+        while True:
+            try:
+                print("")
+                print("=" * 70)
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] 📤 CALLING BACKEND API...")
+                print(f"Target: {backend_url}")
+                print("-" * 70)
+                
+                response = requests.get(backend_url, timeout=10)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ SUCCESS! Received response from backend")
+                    print("")
+                    print("📦 Response Data:")
+                    print(f"   Backend SPIFFE ID: {data.get('backend_spiffe_id')}")
+                    print(f"   Backend Cluster: {data.get('backend_cluster')}")
+                    print(f"   Federation: {data.get('federation_enabled')}")
+                    print(f"   Stock Data:")
+                    for stock in data.get('data', {}).get('stocks', []):
+                        print(f"      {stock['symbol']}: ${stock['price']}")
+                    print("")
+                    print(f"🎉 {data.get('data', {}).get('message')}")
+                else:
+                    print(f"❌ ERROR: Got status code {response.status_code}")
+                
+            except Exception as e:
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ FAILED to call backend: {e}")
+            
+            print("")
+            print("⏳ Waiting 30 seconds before next call...")
+            print("=" * 70)
+            time.sleep(30)
+
+    @app.route('/', methods=['GET'])
+    def index():
+        spiffe_info = get_spiffe_info()
+        return jsonify({
+            'service': 'federated-frontend',
+            'cluster': 'cluster-1',
+            'spiffe_id': spiffe_info.get('spiffe_id'),
+            'bundles': spiffe_info.get('bundle_count'),
+            'backend_url': backend_url,
+            'federation_enabled': True
+        }), 200
+
+    if __name__ == '__main__':
+        print("=" * 70)
+        print("🚀 FEDERATED FRONTEND CLIENT (Cluster 1)")
+        print("=" * 70)
+        print("")
+        
+        spiffe_info = get_spiffe_info()
+        print(f"✅ My SPIFFE ID: {spiffe_info.get('spiffe_id')}")
+        print(f"✅ Trust bundles: {spiffe_info.get('bundle_count')} certificates")
+        print(f"✅ Federation enabled with: apps.cluster-2.devcluster.openshift.com")
+        print("")
+        print(f"🎯 Will call backend API every 30 seconds at: {backend_url}")
+        print("")
+        
+        # Start background thread to call backend
+        thread = threading.Thread(target=call_backend_loop, daemon=True)
+        thread.start()
+        
+        print("🌐 Starting frontend web server on 0.0.0.0:8080...")
+        app.run(host='0.0.0.0', port=8080, debug=False)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: federated-frontend
+  namespace: federation-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: federated-frontend
+  template:
+    metadata:
+      labels:
+        app: federated-frontend
+    spec:
+      serviceAccountName: federated-frontend
+      containers:
+      - name: api
+        image: python:3.11-slim
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          pip install flask requests --quiet
+          apt-get update -qq && apt-get install -y openssl curl wget -qq
+          wget -q https://github.com/spiffe/spire/releases/download/v1.10.0/spire-1.10.0-linux-amd64-musl.tar.gz
+          tar xzf spire-1.10.0-linux-amd64-musl.tar.gz
+          cp spire-1.10.0/bin/spire-agent /spire-agent
+          chmod +x /spire-agent
+          
+          while [ ! -S /spiffe-workload-api/spire-agent.sock ]; do
+            echo "Waiting for SPIFFE socket..."
+            sleep 2
+          done
+          
+          python /app/app.py
+        ports:
+        - containerPort: 8080
+          name: http
+        volumeMounts:
+        - name: spiffe-workload-api
+          mountPath: /spiffe-workload-api
+          readOnly: true
+        - name: app
+          mountPath: /app
+      volumes:
+      - name: spiffe-workload-api
+        csi:
+          driver: csi.spiffe.io
+          readOnly: true
+      - name: app
+        configMap:
+          name: federated-frontend-api
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: federated-frontend
+  namespace: federation-demo
+spec:
+  selector:
+    app: federated-frontend
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: federated-frontend
+  namespace: federation-demo
+spec:
+  to:
+    kind: Service
+    name: federated-frontend
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+

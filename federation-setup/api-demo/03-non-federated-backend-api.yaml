@@ -1,0 +1,201 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: non-federated-backend
+  namespace: federation-demo
+---
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: non-federated-backend
+spec:
+  spiffeIDTemplate: "spiffe://apps.cluster-2.devcluster.openshift.com/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
+  podSelector:
+    matchLabels:
+      app: non-federated-backend
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: federation-demo
+  # NO federatesWith - federation disabled!
+  className: zero-trust-workload-identity-manager-spire
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: non-federated-backend-api
+  namespace: federation-demo
+data:
+  app.py: |
+    from flask import Flask, jsonify, request
+    import subprocess
+    import json
+    from datetime import datetime
+
+    app = Flask(__name__)
+
+    def get_spiffe_info():
+        try:
+            result = subprocess.run(
+                ['/spire-agent', 'api', 'fetch', 'x509', 
+                 '-socketPath', '/spiffe-workload-api/spire-agent.sock',
+                 '-write', '/tmp/'],
+                capture_output=True, text=True, timeout=10
+            )
+            
+            svid_result = subprocess.run(
+                ['openssl', 'x509', '-in', '/tmp/svid.0.pem', '-noout', '-text'],
+                capture_output=True, text=True
+            )
+            
+            spiffe_id = "unknown"
+            for line in svid_result.stdout.split('\n'):
+                if 'URI:spiffe://' in line:
+                    spiffe_id = line.strip().split('URI:')[1]
+                    break
+            
+            bundle_count = subprocess.run(
+                ['grep', '-c', 'BEGIN CERTIFICATE', '/tmp/bundle.0.pem'],
+                capture_output=True, text=True
+            )
+            
+            return {
+                'spiffe_id': spiffe_id,
+                'bundle_count': int(bundle_count.stdout.strip()) if bundle_count.returncode == 0 else 0
+            }
+        except Exception as e:
+            return {'error': str(e)}
+
+    @app.route('/api/data', methods=['GET'])
+    def get_data():
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️  API REQUEST received (SHOULD NOT HAPPEN!)")
+        print(f"   This backend has NO federation enabled")
+        print(f"   Request from: {request.remote_addr}")
+        
+        spiffe_info = get_spiffe_info()
+        
+        response_data = {
+            'status': 'error',
+            'message': 'NON-FEDERATED Backend - Should not receive cross-cluster requests',
+            'backend_spiffe_id': spiffe_info.get('spiffe_id', 'unknown'),
+            'backend_cluster': 'cluster-2 (apps.cluster-2.devcluster.openshift.com)',
+            'trust_bundles': spiffe_info.get('bundle_count', 0),
+            'federation_enabled': False,
+            'federates_with': [],
+            'error': 'This backend does not trust cluster-1 certificates',
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ Sending error response")
+        return jsonify(response_data), 403
+
+    @app.route('/health', methods=['GET'])
+    def health():
+        return jsonify({'status': 'healthy', 'service': 'non-federated-backend'}), 200
+
+    if __name__ == '__main__':
+        print("=" * 70)
+        print("🚀 NON-FEDERATED BACKEND API SERVER (Cluster 2)")
+        print("⚠️  WARNING: Federation is DISABLED")
+        print("=" * 70)
+        print("")
+        
+        spiffe_info = get_spiffe_info()
+        print(f"✅ My SPIFFE ID: {spiffe_info.get('spiffe_id')}")
+        print(f"✅ Trust bundles loaded: {spiffe_info.get('bundle_count')} certificate(s)")
+        print(f"❌ Federation: DISABLED - No cluster-1 bundle")
+        print("")
+        print("📡 API Endpoints:")
+        print("   GET /api/data  - Will return error (no federation)")
+        print("   GET /health    - Health check")
+        print("")
+        print("⚠️  This backend does NOT trust cluster-1 certificates!")
+        print("   Requests from cluster-1 should fail at mTLS layer")
+        print("")
+        print("🌐 Starting server on 0.0.0.0:8081...")
+        print("   (If you see requests, something is wrong!)")
+        print("")
+        
+        app.run(host='0.0.0.0', port=8081, debug=False)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: non-federated-backend
+  namespace: federation-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: non-federated-backend
+  template:
+    metadata:
+      labels:
+        app: non-federated-backend
+    spec:
+      serviceAccountName: non-federated-backend
+      containers:
+      - name: api
+        image: python:3.11-slim
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          pip install flask requests --quiet
+          apt-get update -qq && apt-get install -y openssl curl wget -qq
+          wget -q https://github.com/spiffe/spire/releases/download/v1.10.0/spire-1.10.0-linux-amd64-musl.tar.gz
+          tar xzf spire-1.10.0-linux-amd64-musl.tar.gz
+          cp spire-1.10.0/bin/spire-agent /spire-agent
+          chmod +x /spire-agent
+          
+          while [ ! -S /spiffe-workload-api/spire-agent.sock ]; do
+            echo "Waiting for SPIFFE socket..."
+            sleep 2
+          done
+          
+          python /app/app.py
+        ports:
+        - containerPort: 8081
+          name: http
+        volumeMounts:
+        - name: spiffe-workload-api
+          mountPath: /spiffe-workload-api
+          readOnly: true
+        - name: app
+          mountPath: /app
+      volumes:
+      - name: spiffe-workload-api
+        csi:
+          driver: csi.spiffe.io
+          readOnly: true
+      - name: app
+        configMap:
+          name: non-federated-backend-api
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: non-federated-backend
+  namespace: federation-demo
+spec:
+  selector:
+    app: non-federated-backend
+  ports:
+  - port: 8081
+    targetPort: 8081
+    name: http
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: non-federated-backend
+  namespace: federation-demo
+spec:
+  to:
+    kind: Service
+    name: non-federated-backend
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
