@@ -1,0 +1,119 @@
+# Auto-Federated Workload Templates
+# These ClusterSPIFFEID resources automatically create federated entries for workloads
+
+---
+# Template 1: Federate ALL workloads in "demo" namespace across all 3 clusters
+# Deploy this on any cluster where you want demo namespace workloads to be federated
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: demo-namespace-auto-federated
+spec:
+  # SPIFFE ID template - CHANGE the trust domain to match your cluster!
+  # Cluster 1: apps.client-1.devcluster.openshift.com
+  # Cluster 2: apps.server-1.devcluster.openshift.com
+  # Cluster 3: apps.aagnihot-cluster-fss.devcluster.openshift.com
+  spiffeIDTemplate: "spiffe://YOUR-CLUSTER-TRUST-DOMAIN/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
+  
+  # Match ANY pod in the demo namespace
+  podSelector:
+    matchLabels: {}  # Empty = matches all pods
+  
+  # Match the demo namespace
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: demo
+  
+  # IMPORTANT: Federate with ALL other clusters
+  federatesWith:
+  - "apps.client-1.devcluster.openshift.com"
+  - "apps.server-1.devcluster.openshift.com"
+  - "apps.aagnihot-cluster-fss.devcluster.openshift.com"
+  
+  # IMPORTANT: Must use this className for the operator-managed SPIRE
+  className: zero-trust-workload-identity-manager-spire
+
+---
+# Template 2: Federate workloads with specific label across all 3 clusters
+# Any pod with label "federated=true" gets federated automatically
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: label-based-auto-federated
+spec:
+  # SPIFFE ID template - CHANGE the trust domain to match your cluster!
+  spiffeIDTemplate: "spiffe://YOUR-CLUSTER-TRUST-DOMAIN/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
+  
+  # Match pods with label "federated=true"
+  podSelector:
+    matchLabels:
+      federated: "true"
+  
+  # Match ANY namespace
+  namespaceSelector:
+    matchLabels: {}  # Empty = all namespaces
+  
+  # Federate with ALL other clusters
+  federatesWith:
+  - "apps.client-1.devcluster.openshift.com"
+  - "apps.server-1.devcluster.openshift.com"
+  - "apps.aagnihot-cluster-fss.devcluster.openshift.com"
+  
+  className: zero-trust-workload-identity-manager-spire
+
+---
+# Template 3: Federate workloads in namespaces with label "federation=enabled"
+# Good for controlling federation at namespace level
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: namespace-label-auto-federated
+spec:
+  # SPIFFE ID template - CHANGE the trust domain to match your cluster!
+  spiffeIDTemplate: "spiffe://YOUR-CLUSTER-TRUST-DOMAIN/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
+  
+  # Match all pods
+  podSelector:
+    matchLabels: {}
+  
+  # Match namespaces with label "federation=enabled"
+  namespaceSelector:
+    matchLabels:
+      federation: enabled
+  
+  # Federate with ALL other clusters
+  federatesWith:
+  - "apps.client-1.devcluster.openshift.com"
+  - "apps.server-1.devcluster.openshift.com"
+  - "apps.aagnihot-cluster-fss.devcluster.openshift.com"
+  
+  className: zero-trust-workload-identity-manager-spire
+
+---
+# Template 4: Federate specific app across all clusters
+# Good for specific applications that need federation
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: myapp-auto-federated
+spec:
+  # SPIFFE ID template - CHANGE the trust domain to match your cluster!
+  spiffeIDTemplate: "spiffe://YOUR-CLUSTER-TRUST-DOMAIN/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
+  
+  # Match pods with label "app=myapp"
+  podSelector:
+    matchLabels:
+      app: myapp
+  
+  # Match any namespace
+  namespaceSelector:
+    matchLabels: {}
+  
+  # Federate with ALL other clusters
+  federatesWith:
+  - "apps.client-1.devcluster.openshift.com"
+  - "apps.server-1.devcluster.openshift.com"
+  - "apps.aagnihot-cluster-fss.devcluster.openshift.com"
+  
+  className: zero-trust-workload-identity-manager-spire
+

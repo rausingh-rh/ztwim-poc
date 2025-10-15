@@ -192,9 +192,10 @@ update_configmap() {
     local kubeconfig=$1
     local trust_domain=$2
     local cluster_name=$3
-    local fed_url=$4
-    local fed_spiffe_id=$5
-    local output_file=$6
+    local fed_trust_domain=$4
+    local fed_url=$5
+    local fed_spiffe_id=$6
+    local output_file=$7
     
     # Get current config
     local current_config=$(kubectl --kubeconfig "$kubeconfig" get configmap spire-server -n zero-trust-workload-identity-manager -o jsonpath='{.data.server\.conf}')
@@ -215,8 +216,9 @@ config['server']['federation']['bundle_endpoint'] = {
     'port': 8443
 }
 
+# KEY MUST BE TRUST DOMAIN, NOT URL!
 config['server']['federation']['federates_with'] = {
-    '$fed_url': {
+    '$fed_trust_domain': {
         'bundle_endpoint_url': '$fed_url',
         'bundle_endpoint_profile': {
             'https_spiffe': {
@@ -230,14 +232,14 @@ print(json.dumps(config, indent=2))
 " > "$output_file"
 }
 
-# For Cluster 1
+# For Cluster 1 - federates with Cluster 2
 update_configmap "$CLUSTER1_KUBECONFIG" "$CLUSTER1_TRUST_DOMAIN" "$CLUSTER1_NAME" \
-    "$CLUSTER2_FED_URL" "spiffe://$CLUSTER2_TRUST_DOMAIN/spire/server" \
+    "$CLUSTER2_TRUST_DOMAIN" "$CLUSTER2_FED_URL" "spiffe://$CLUSTER2_TRUST_DOMAIN/spire/server" \
     "$WORK_DIR/cluster1-server-conf.json"
 
-# For Cluster 2  
+# For Cluster 2 - federates with Cluster 1
 update_configmap "$CLUSTER2_KUBECONFIG" "$CLUSTER2_TRUST_DOMAIN" "$CLUSTER2_NAME" \
-    "$CLUSTER1_FED_URL" "spiffe://$CLUSTER1_TRUST_DOMAIN/spire/server" \
+    "$CLUSTER1_TRUST_DOMAIN" "$CLUSTER1_FED_URL" "spiffe://$CLUSTER1_TRUST_DOMAIN/spire/server" \
     "$WORK_DIR/cluster2-server-conf.json"
 
 # Apply updated configmaps
@@ -279,32 +281,32 @@ kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" apply -f "$WORK_DIR/cluster2-cm-upda
 echo -e "${GREEN}✓${NC} Updated SPIRE server configurations"
 echo ""
 
-# Step 3: Expose port 8443 on SPIRE server pods
-echo -e "${YELLOW}Step 3: Exposing federation port on SPIRE servers...${NC}"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+# # Step 3: Expose port 8443 on SPIRE server pods
+# echo -e "${YELLOW}Step 3: Exposing federation port on SPIRE servers...${NC}"
+# echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" patch statefulset spire-server -n zero-trust-workload-identity-manager --type='json' \
-  -p='[{"op": "add", "path": "/spec/template/spec/containers/0/ports/-", "value": {"name": "federation", "containerPort": 8443, "protocol": "TCP"}}]' 2>/dev/null || echo "Port already exposed or patch failed (continuing...)"
+# kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" patch statefulset spire-server -n zero-trust-workload-identity-manager --type='json' \
+#   -p='[{"op": "add", "path": "/spec/template/spec/containers/0/ports/-", "value": {"name": "federation", "containerPort": 8443, "protocol": "TCP"}}]' 2>/dev/null || echo "Port already exposed or patch failed (continuing...)"
 
-kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" patch statefulset spire-server -n zero-trust-workload-identity-manager --type='json' \
-  -p='[{"op": "add", "path": "/spec/template/spec/containers/0/ports/-", "value": {"name": "federation", "containerPort": 8443, "protocol": "TCP"}}]' 2>/dev/null || echo "Port already exposed or patch failed (continuing...)"
+# kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" patch statefulset spire-server -n zero-trust-workload-identity-manager --type='json' \
+#   -p='[{"op": "add", "path": "/spec/template/spec/containers/0/ports/-", "value": {"name": "federation", "containerPort": 8443, "protocol": "TCP"}}]' 2>/dev/null || echo "Port already exposed or patch failed (continuing...)"
 
-echo -e "${GREEN}✓${NC} Federation port exposed"
-echo ""
+# echo -e "${GREEN}✓${NC} Federation port exposed"
+# echo ""
 
-# Step 4: Restart SPIRE servers
-echo -e "${YELLOW}Step 4: Restarting SPIRE servers...${NC}"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+# # Step 4: Restart SPIRE servers
+# echo -e "${YELLOW}Step 4: Restarting SPIRE servers...${NC}"
+# echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" rollout restart statefulset spire-server -n zero-trust-workload-identity-manager
-kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" rollout restart statefulset spire-server -n zero-trust-workload-identity-manager
+# kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" rollout restart statefulset spire-server -n zero-trust-workload-identity-manager
+# kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" rollout restart statefulset spire-server -n zero-trust-workload-identity-manager
 
-echo "Waiting for SPIRE servers to be ready..."
-kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" wait --for=condition=ready pod/spire-server-0 -n zero-trust-workload-identity-manager --timeout=120s
-kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" wait --for=condition=ready pod/spire-server-0 -n zero-trust-workload-identity-manager --timeout=120s
+# echo "Waiting for SPIRE servers to be ready..."
+# kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" wait --for=condition=ready pod/spire-server-0 -n zero-trust-workload-identity-manager --timeout=120s
+# kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" wait --for=condition=ready pod/spire-server-0 -n zero-trust-workload-identity-manager --timeout=120s
 
-echo -e "${GREEN}✓${NC} SPIRE servers restarted and ready"
-echo ""
+# echo -e "${GREEN}✓${NC} SPIRE servers restarted and ready"
+# echo ""
 
 # Step 5: Extract trust bundles
 echo -e "${YELLOW}Step 5: Extracting trust bundles...${NC}"
@@ -363,593 +365,593 @@ kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" apply -f "$WORK_DIR/cluster2-federat
 echo -e "${GREEN}✓${NC} ClusterFederatedTrustDomain resources created"
 echo ""
 
-# Step 7: Deploy test workloads
-echo -e "${YELLOW}Step 7: Deploying test workloads...${NC}"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+# # Step 7: Deploy test workloads
+# echo -e "${YELLOW}Step 7: Deploying test workloads...${NC}"
+# echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-# Deploy to Cluster 2 (backends)
-kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" apply -f - <<EOF
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: federation-demo
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: federated-backend
-  namespace: federation-demo
----
-apiVersion: spire.spiffe.io/v1alpha1
-kind: ClusterSPIFFEID
-metadata:
-  name: federated-backend
-spec:
-  spiffeIDTemplate: "spiffe://$CLUSTER2_TRUST_DOMAIN/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
-  podSelector:
-    matchLabels:
-      app: federated-backend
-  namespaceSelector:
-    matchLabels:
-      kubernetes.io/metadata.name: federation-demo
-  federatesWith:
-  - "$CLUSTER1_TRUST_DOMAIN"
-  className: zero-trust-workload-identity-manager-spire
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: non-federated-backend
-  namespace: federation-demo
----
-apiVersion: spire.spiffe.io/v1alpha1
-kind: ClusterSPIFFEID
-metadata:
-  name: non-federated-backend
-spec:
-  spiffeIDTemplate: "spiffe://$CLUSTER2_TRUST_DOMAIN/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
-  podSelector:
-    matchLabels:
-      app: non-federated-backend
-  namespaceSelector:
-    matchLabels:
-      kubernetes.io/metadata.name: federation-demo
-  className: zero-trust-workload-identity-manager-spire
----
-apiVersion: v1
-kind: Pod
-metadata:
-  name: federated-backend
-  namespace: federation-demo
-  labels:
-    app: federated-backend
-spec:
-  serviceAccountName: federated-backend
-  containers:
-  - name: api
-    image: python:3.11-slim
-    command: ["/bin/bash", "-c"]
-    args:
-    - |
-      cat > /app.py << 'PYEOF'
-      from http.server import HTTPServer, BaseHTTPRequestHandler
-      import json
-      from datetime import datetime
+# # Deploy to Cluster 2 (backends)
+# kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" apply -f - <<EOF
+# ---
+# apiVersion: v1
+# kind: Namespace
+# metadata:
+#   name: federation-demo
+# ---
+# apiVersion: v1
+# kind: ServiceAccount
+# metadata:
+#   name: federated-backend
+#   namespace: federation-demo
+# ---
+# apiVersion: spire.spiffe.io/v1alpha1
+# kind: ClusterSPIFFEID
+# metadata:
+#   name: federated-backend
+# spec:
+#   spiffeIDTemplate: "spiffe://$CLUSTER2_TRUST_DOMAIN/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
+#   podSelector:
+#     matchLabels:
+#       app: federated-backend
+#   namespaceSelector:
+#     matchLabels:
+#       kubernetes.io/metadata.name: federation-demo
+#   federatesWith:
+#   - "$CLUSTER1_TRUST_DOMAIN"
+#   className: zero-trust-workload-identity-manager-spire
+# ---
+# apiVersion: v1
+# kind: ServiceAccount
+# metadata:
+#   name: non-federated-backend
+#   namespace: federation-demo
+# ---
+# apiVersion: spire.spiffe.io/v1alpha1
+# kind: ClusterSPIFFEID
+# metadata:
+#   name: non-federated-backend
+# spec:
+#   spiffeIDTemplate: "spiffe://$CLUSTER2_TRUST_DOMAIN/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
+#   podSelector:
+#     matchLabels:
+#       app: non-federated-backend
+#   namespaceSelector:
+#     matchLabels:
+#       kubernetes.io/metadata.name: federation-demo
+#   className: zero-trust-workload-identity-manager-spire
+# ---
+# apiVersion: v1
+# kind: Pod
+# metadata:
+#   name: federated-backend
+#   namespace: federation-demo
+#   labels:
+#     app: federated-backend
+# spec:
+#   serviceAccountName: federated-backend
+#   containers:
+#   - name: api
+#     image: python:3.11-slim
+#     command: ["/bin/bash", "-c"]
+#     args:
+#     - |
+#       cat > /app.py << 'PYEOF'
+#       from http.server import HTTPServer, BaseHTTPRequestHandler
+#       import json
+#       from datetime import datetime
       
-      class Handler(BaseHTTPRequestHandler):
-          def do_GET(self):
-              if self.path == '/api/stock-data':
-                  print(f"[{datetime.now().strftime('%H:%M:%S')}] 📥 API REQUEST from {self.client_address[0]}")
+#       class Handler(BaseHTTPRequestHandler):
+#           def do_GET(self):
+#               if self.path == '/api/stock-data':
+#                   print(f"[{datetime.now().strftime('%H:%M:%S')}] 📥 API REQUEST from {self.client_address[0]}")
                   
-                  response = {
-                      'status': 'success',
-                      'backend': 'federated-backend',
-                      'cluster': 'cluster-2',
-                      'trust_domain': '$CLUSTER2_TRUST_DOMAIN',
-                      'federation_enabled': True,
-                      'federates_with': ['$CLUSTER1_TRUST_DOMAIN'],
-                      'data': {
-                          'stocks': [
-                              {'symbol': 'AAPL', 'price': 150.25, 'change': '+2.5%'},
-                              {'symbol': 'GOOGL', 'price': 2800.50, 'change': '+1.2%'},
-                              {'symbol': 'MSFT', 'price': 380.75, 'change': '+0.8%'}
-                          ],
-                          'timestamp': datetime.now().isoformat(),
-                          'message': '✅ Federation is WORKING! Data from Cluster 2'
-                      }
-                  }
+#                   response = {
+#                       'status': 'success',
+#                       'backend': 'federated-backend',
+#                       'cluster': 'cluster-2',
+#                       'trust_domain': '$CLUSTER2_TRUST_DOMAIN',
+#                       'federation_enabled': True,
+#                       'federates_with': ['$CLUSTER1_TRUST_DOMAIN'],
+#                       'data': {
+#                           'stocks': [
+#                               {'symbol': 'AAPL', 'price': 150.25, 'change': '+2.5%'},
+#                               {'symbol': 'GOOGL', 'price': 2800.50, 'change': '+1.2%'},
+#                               {'symbol': 'MSFT', 'price': 380.75, 'change': '+0.8%'}
+#                           ],
+#                           'timestamp': datetime.now().isoformat(),
+#                           'message': '✅ Federation is WORKING! Data from Cluster 2'
+#                       }
+#                   }
                   
-                  self.send_response(200)
-                  self.send_header('Content-Type', 'application/json')
-                  self.send_header('X-Backend-Cluster', 'cluster-2')
-                  self.send_header('X-Federation', 'enabled')
-                  self.end_headers()
-                  self.wfile.write(json.dumps(response, indent=2).encode())
+#                   self.send_response(200)
+#                   self.send_header('Content-Type', 'application/json')
+#                   self.send_header('X-Backend-Cluster', 'cluster-2')
+#                   self.send_header('X-Federation', 'enabled')
+#                   self.end_headers()
+#                   self.wfile.write(json.dumps(response, indent=2).encode())
                   
-                  print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Response sent successfully")
-              elif self.path == '/health':
-                  self.send_response(200)
-                  self.send_header('Content-Type', 'text/plain')
-                  self.end_headers()
-                  self.wfile.write(b'OK')
-              else:
-                  self.send_response(404)
-                  self.end_headers()
+#                   print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Response sent successfully")
+#               elif self.path == '/health':
+#                   self.send_response(200)
+#                   self.send_header('Content-Type', 'text/plain')
+#                   self.end_headers()
+#                   self.wfile.write(b'OK')
+#               else:
+#                   self.send_response(404)
+#                   self.end_headers()
           
-          def log_message(self, format, *args):
-              pass  # Suppress default logging
+#           def log_message(self, format, *args):
+#               pass  # Suppress default logging
       
-      print("=" * 70)
-      print("🚀 FEDERATED BACKEND API (Cluster 2)")
-      print("=" * 70)
-      print("✅ Federation ENABLED")
-      print("✅ Trust Domain: $CLUSTER2_TRUST_DOMAIN")
-      print("✅ Federates With: $CLUSTER1_TRUST_DOMAIN")
-      print("")
-      print("📡 API Endpoints:")
-      print("   GET /api/stock-data  - Returns stock market data")
-      print("   GET /health          - Health check")
-      print("")
-      print("🌐 Listening on port 8080...")
-      print("Waiting for API requests...")
-      print("")
+#       print("=" * 70)
+#       print("🚀 FEDERATED BACKEND API (Cluster 2)")
+#       print("=" * 70)
+#       print("✅ Federation ENABLED")
+#       print("✅ Trust Domain: $CLUSTER2_TRUST_DOMAIN")
+#       print("✅ Federates With: $CLUSTER1_TRUST_DOMAIN")
+#       print("")
+#       print("📡 API Endpoints:")
+#       print("   GET /api/stock-data  - Returns stock market data")
+#       print("   GET /health          - Health check")
+#       print("")
+#       print("🌐 Listening on port 8080...")
+#       print("Waiting for API requests...")
+#       print("")
       
-      server = HTTPServer(('0.0.0.0', 8080), Handler)
-      server.serve_forever()
-      PYEOF
+#       server = HTTPServer(('0.0.0.0', 8080), Handler)
+#       server.serve_forever()
+#       PYEOF
       
-      python3 /app.py
-    ports:
-    - containerPort: 8080
-    volumeMounts:
-    - name: spiffe-workload-api
-      mountPath: /spiffe-workload-api
-      readOnly: true
-  volumes:
-  - name: spiffe-workload-api
-    csi:
-      driver: csi.spiffe.io
-      readOnly: true
----
-apiVersion: v1
-kind: Pod
-metadata:
-  name: non-federated-backend
-  namespace: federation-demo
-  labels:
-    app: non-federated-backend
-spec:
-  serviceAccountName: non-federated-backend
-  containers:
-  - name: api
-    image: python:3.11-slim
-    command: ["/bin/bash", "-c"]
-    args:
-    - |
-      cat > /app.py << 'PYEOF'
-      from http.server import HTTPServer, BaseHTTPRequestHandler
-      import json
-      from datetime import datetime
+#       python3 /app.py
+#     ports:
+#     - containerPort: 8080
+#     volumeMounts:
+#     - name: spiffe-workload-api
+#       mountPath: /spiffe-workload-api
+#       readOnly: true
+#   volumes:
+#   - name: spiffe-workload-api
+#     csi:
+#       driver: csi.spiffe.io
+#       readOnly: true
+# ---
+# apiVersion: v1
+# kind: Pod
+# metadata:
+#   name: non-federated-backend
+#   namespace: federation-demo
+#   labels:
+#     app: non-federated-backend
+# spec:
+#   serviceAccountName: non-federated-backend
+#   containers:
+#   - name: api
+#     image: python:3.11-slim
+#     command: ["/bin/bash", "-c"]
+#     args:
+#     - |
+#       cat > /app.py << 'PYEOF'
+#       from http.server import HTTPServer, BaseHTTPRequestHandler
+#       import json
+#       from datetime import datetime
       
-      class Handler(BaseHTTPRequestHandler):
-          def do_GET(self):
-              if self.path == '/api/stock-data':
-                  print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️  API REQUEST (UNEXPECTED!)")
-                  print("   This backend should NOT receive cluster-1 requests!")
+#       class Handler(BaseHTTPRequestHandler):
+#           def do_GET(self):
+#               if self.path == '/api/stock-data':
+#                   print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️  API REQUEST (UNEXPECTED!)")
+#                   print("   This backend should NOT receive cluster-1 requests!")
                   
-                  response = {
-                      'status': 'error',
-                      'backend': 'non-federated-backend',
-                      'cluster': 'cluster-2',
-                      'trust_domain': '$CLUSTER2_TRUST_DOMAIN',
-                      'federation_enabled': False,
-                      'federates_with': [],
-                      'error': 'This backend does NOT trust $CLUSTER1_TRUST_DOMAIN',
-                      'message': '❌ If you see this, check your configuration!',
-                      'timestamp': datetime.now().isoformat()
-                  }
+#                   response = {
+#                       'status': 'error',
+#                       'backend': 'non-federated-backend',
+#                       'cluster': 'cluster-2',
+#                       'trust_domain': '$CLUSTER2_TRUST_DOMAIN',
+#                       'federation_enabled': False,
+#                       'federates_with': [],
+#                       'error': 'This backend does NOT trust $CLUSTER1_TRUST_DOMAIN',
+#                       'message': '❌ If you see this, check your configuration!',
+#                       'timestamp': datetime.now().isoformat()
+#                   }
                   
-                  self.send_response(403)
-                  self.send_header('Content-Type', 'application/json')
-                  self.send_header('X-Backend-Cluster', 'cluster-2')
-                  self.send_header('X-Federation', 'disabled')
-                  self.end_headers()
-                  self.wfile.write(json.dumps(response, indent=2).encode())
+#                   self.send_response(403)
+#                   self.send_header('Content-Type', 'application/json')
+#                   self.send_header('X-Backend-Cluster', 'cluster-2')
+#                   self.send_header('X-Federation', 'disabled')
+#                   self.end_headers()
+#                   self.wfile.write(json.dumps(response, indent=2).encode())
                   
-                  print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ Sent error response")
-              elif self.path == '/health':
-                  self.send_response(200)
-                  self.send_header('Content-Type', 'text/plain')
-                  self.end_headers()
-                  self.wfile.write(b'OK')
-              else:
-                  self.send_response(404)
-                  self.end_headers()
+#                   print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ Sent error response")
+#               elif self.path == '/health':
+#                   self.send_response(200)
+#                   self.send_header('Content-Type', 'text/plain')
+#                   self.end_headers()
+#                   self.wfile.write(b'OK')
+#               else:
+#                   self.send_response(404)
+#                   self.end_headers()
           
-          def log_message(self, format, *args):
-              pass
+#           def log_message(self, format, *args):
+#               pass
       
-      print("=" * 70)
-      print("🚀 NON-FEDERATED BACKEND API (Cluster 2)")
-      print("=" * 70)
-      print("❌ Federation DISABLED")
-      print("❌ Trust Domain: $CLUSTER2_TRUST_DOMAIN")
-      print("❌ Does NOT trust: $CLUSTER1_TRUST_DOMAIN")
-      print("")
-      print("📡 API Endpoints:")
-      print("   GET /api/stock-data  - Will return error")
-      print("   GET /health          - Health check")
-      print("")
-      print("🌐 Listening on port 8081...")
-      print("⚠️  Should NOT receive requests from cluster-1!")
-      print("")
+#       print("=" * 70)
+#       print("🚀 NON-FEDERATED BACKEND API (Cluster 2)")
+#       print("=" * 70)
+#       print("❌ Federation DISABLED")
+#       print("❌ Trust Domain: $CLUSTER2_TRUST_DOMAIN")
+#       print("❌ Does NOT trust: $CLUSTER1_TRUST_DOMAIN")
+#       print("")
+#       print("📡 API Endpoints:")
+#       print("   GET /api/stock-data  - Will return error")
+#       print("   GET /health          - Health check")
+#       print("")
+#       print("🌐 Listening on port 8081...")
+#       print("⚠️  Should NOT receive requests from cluster-1!")
+#       print("")
       
-      server = HTTPServer(('0.0.0.0', 8081), Handler)
-      server.serve_forever()
-      PYEOF
+#       server = HTTPServer(('0.0.0.0', 8081), Handler)
+#       server.serve_forever()
+#       PYEOF
       
-      python3 /app.py
-    ports:
-    - containerPort: 8081
-    volumeMounts:
-    - name: spiffe-workload-api
-      mountPath: /spiffe-workload-api
-      readOnly: true
-  volumes:
-  - name: spiffe-workload-api
-    csi:
-      driver: csi.spiffe.io
-      readOnly: true
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: federated-backend
-  namespace: federation-demo
-spec:
-  selector:
-    app: federated-backend
-  ports:
-  - port: 8080
-    targetPort: 8080
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: non-federated-backend
-  namespace: federation-demo
-spec:
-  selector:
-    app: non-federated-backend
-  ports:
-  - port: 8081
-    targetPort: 8081
----
-apiVersion: route.openshift.io/v1
-kind: Route
-metadata:
-  name: federated-backend
-  namespace: federation-demo
-spec:
-  to:
-    kind: Service
-    name: federated-backend
-  port:
-    targetPort: 8080
-  tls:
-    termination: edge
----
-apiVersion: route.openshift.io/v1
-kind: Route
-metadata:
-  name: non-federated-backend
-  namespace: federation-demo
-spec:
-  to:
-    kind: Service
-    name: non-federated-backend
-  port:
-    targetPort: 8081
-  tls:
-    termination: edge
-EOF
+#       python3 /app.py
+#     ports:
+#     - containerPort: 8081
+#     volumeMounts:
+#     - name: spiffe-workload-api
+#       mountPath: /spiffe-workload-api
+#       readOnly: true
+#   volumes:
+#   - name: spiffe-workload-api
+#     csi:
+#       driver: csi.spiffe.io
+#       readOnly: true
+# ---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: federated-backend
+#   namespace: federation-demo
+# spec:
+#   selector:
+#     app: federated-backend
+#   ports:
+#   - port: 8080
+#     targetPort: 8080
+# ---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: non-federated-backend
+#   namespace: federation-demo
+# spec:
+#   selector:
+#     app: non-federated-backend
+#   ports:
+#   - port: 8081
+#     targetPort: 8081
+# ---
+# apiVersion: route.openshift.io/v1
+# kind: Route
+# metadata:
+#   name: federated-backend
+#   namespace: federation-demo
+# spec:
+#   to:
+#     kind: Service
+#     name: federated-backend
+#   port:
+#     targetPort: 8080
+#   tls:
+#     termination: edge
+# ---
+# apiVersion: route.openshift.io/v1
+# kind: Route
+# metadata:
+#   name: non-federated-backend
+#   namespace: federation-demo
+# spec:
+#   to:
+#     kind: Service
+#     name: non-federated-backend
+#   port:
+#     targetPort: 8081
+#   tls:
+#     termination: edge
+# EOF
 
-# Deploy to Cluster 1 (frontends)
-kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" apply -f - <<EOF
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: federation-demo
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: federated-frontend
-  namespace: federation-demo
----
-apiVersion: spire.spiffe.io/v1alpha1
-kind: ClusterSPIFFEID
-metadata:
-  name: federated-frontend
-spec:
-  spiffeIDTemplate: "spiffe://$CLUSTER1_TRUST_DOMAIN/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
-  podSelector:
-    matchLabels:
-      app: federated-frontend
-  namespaceSelector:
-    matchLabels:
-      kubernetes.io/metadata.name: federation-demo
-  federatesWith:
-  - "$CLUSTER2_TRUST_DOMAIN"
-  className: zero-trust-workload-identity-manager-spire
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: non-federated-frontend
-  namespace: federation-demo
----
-apiVersion: spire.spiffe.io/v1alpha1
-kind: ClusterSPIFFEID
-metadata:
-  name: non-federated-frontend
-spec:
-  spiffeIDTemplate: "spiffe://$CLUSTER1_TRUST_DOMAIN/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
-  podSelector:
-    matchLabels:
-      app: non-federated-frontend
-  namespaceSelector:
-    matchLabels:
-      kubernetes.io/metadata.name: federation-demo
-  className: zero-trust-workload-identity-manager-spire
----
-apiVersion: v1
-kind: Pod
-metadata:
-  name: federated-frontend
-  namespace: federation-demo
-  labels:
-    app: federated-frontend
-spec:
-  serviceAccountName: federated-frontend
-  containers:
-  - name: client
-    image: python:3.11-slim
-    command: ["/bin/bash", "-c"]
-    args:
-    - |
-      apt-get update -qq && apt-get install -y curl -qq
+# # Deploy to Cluster 1 (frontends)
+# kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" apply -f - <<EOF
+# ---
+# apiVersion: v1
+# kind: Namespace
+# metadata:
+#   name: federation-demo
+# ---
+# apiVersion: v1
+# kind: ServiceAccount
+# metadata:
+#   name: federated-frontend
+#   namespace: federation-demo
+# ---
+# apiVersion: spire.spiffe.io/v1alpha1
+# kind: ClusterSPIFFEID
+# metadata:
+#   name: federated-frontend
+# spec:
+#   spiffeIDTemplate: "spiffe://$CLUSTER1_TRUST_DOMAIN/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
+#   podSelector:
+#     matchLabels:
+#       app: federated-frontend
+#   namespaceSelector:
+#     matchLabels:
+#       kubernetes.io/metadata.name: federation-demo
+#   federatesWith:
+#   - "$CLUSTER2_TRUST_DOMAIN"
+#   className: zero-trust-workload-identity-manager-spire
+# ---
+# apiVersion: v1
+# kind: ServiceAccount
+# metadata:
+#   name: non-federated-frontend
+#   namespace: federation-demo
+# ---
+# apiVersion: spire.spiffe.io/v1alpha1
+# kind: ClusterSPIFFEID
+# metadata:
+#   name: non-federated-frontend
+# spec:
+#   spiffeIDTemplate: "spiffe://$CLUSTER1_TRUST_DOMAIN/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
+#   podSelector:
+#     matchLabels:
+#       app: non-federated-frontend
+#   namespaceSelector:
+#     matchLabels:
+#       kubernetes.io/metadata.name: federation-demo
+#   className: zero-trust-workload-identity-manager-spire
+# ---
+# apiVersion: v1
+# kind: Pod
+# metadata:
+#   name: federated-frontend
+#   namespace: federation-demo
+#   labels:
+#     app: federated-frontend
+# spec:
+#   serviceAccountName: federated-frontend
+#   containers:
+#   - name: client
+#     image: python:3.11-slim
+#     command: ["/bin/bash", "-c"]
+#     args:
+#     - |
+#       apt-get update -qq && apt-get install -y curl -qq
       
-      cat > /app.py << 'PYEOF'
-      import requests
-      import time
-      from datetime import datetime
+#       cat > /app.py << 'PYEOF'
+#       import requests
+#       import time
+#       from datetime import datetime
       
-      backend_url = "http://federated-backend.federation-demo.svc.cluster.local:8080/api/stock-data"
+#       backend_url = "http://federated-backend.federation-demo.svc.cluster.local:8080/api/stock-data"
       
-      print("=" * 70)
-      print("🚀 FEDERATED FRONTEND CLIENT (Cluster 1)")
-      print("=" * 70)
-      print("✅ Federation ENABLED")
-      print("✅ Trust Domain: $CLUSTER1_TRUST_DOMAIN")
-      print("✅ Federates With: $CLUSTER2_TRUST_DOMAIN")
-      print("")
-      print(f"🎯 Target backend: {backend_url}")
-      print("🔄 Will call API every 30 seconds...")
-      print("")
+#       print("=" * 70)
+#       print("🚀 FEDERATED FRONTEND CLIENT (Cluster 1)")
+#       print("=" * 70)
+#       print("✅ Federation ENABLED")
+#       print("✅ Trust Domain: $CLUSTER1_TRUST_DOMAIN")
+#       print("✅ Federates With: $CLUSTER2_TRUST_DOMAIN")
+#       print("")
+#       print(f"🎯 Target backend: {backend_url}")
+#       print("🔄 Will call API every 30 seconds...")
+#       print("")
       
-      time.sleep(10)
+#       time.sleep(10)
       
-      while True:
-          try:
-              print("=" * 70)
-              print(f"[{datetime.now().strftime('%H:%M:%S')}] 📤 CALLING BACKEND API...")
-              print(f"   URL: {backend_url}")
+#       while True:
+#           try:
+#               print("=" * 70)
+#               print(f"[{datetime.now().strftime('%H:%M:%S')}] 📤 CALLING BACKEND API...")
+#               print(f"   URL: {backend_url}")
               
-              response = requests.get(backend_url, timeout=10)
+#               response = requests.get(backend_url, timeout=10)
               
-              if response.status_code == 200:
-                  data = response.json()
-                  print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ SUCCESS!")
-                  print("")
-                  print("📦 Response:")
-                  print(f"   Backend: {data.get('backend')}")
-                  print(f"   Cluster: {data.get('cluster')}")
-                  print(f"   Federation: {data.get('federation_enabled')}")
-                  print("")
-                  print("📈 Stock Data Received:")
-                  for stock in data.get('data', {}).get('stocks', []):
-                      print(f"   {stock['symbol']}: \${stock['price']} ({stock['change']})")
-                  print("")
-                  print(f"🎉 {data.get('data', {}).get('message')}")
-              else:
-                  print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ ERROR: Status {response.status_code}")
+#               if response.status_code == 200:
+#                   data = response.json()
+#                   print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ SUCCESS!")
+#                   print("")
+#                   print("📦 Response:")
+#                   print(f"   Backend: {data.get('backend')}")
+#                   print(f"   Cluster: {data.get('cluster')}")
+#                   print(f"   Federation: {data.get('federation_enabled')}")
+#                   print("")
+#                   print("📈 Stock Data Received:")
+#                   for stock in data.get('data', {}).get('stocks', []):
+#                       print(f"   {stock['symbol']}: \${stock['price']} ({stock['change']})")
+#                   print("")
+#                   print(f"🎉 {data.get('data', {}).get('message')}")
+#               else:
+#                   print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ ERROR: Status {response.status_code}")
                   
-          except Exception as e:
-              print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ FAILED: {e}")
+#           except Exception as e:
+#               print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ FAILED: {e}")
           
-          print("")
-          print("⏳ Waiting 30 seconds...")
-          time.sleep(30)
-      PYEOF
+#           print("")
+#           print("⏳ Waiting 30 seconds...")
+#           time.sleep(30)
+#       PYEOF
       
-      pip install requests --quiet
-      python3 /app.py
-    volumeMounts:
-    - name: spiffe-workload-api
-      mountPath: /spiffe-workload-api
-      readOnly: true
-  volumes:
-  - name: spiffe-workload-api
-    csi:
-      driver: csi.spiffe.io
-      readOnly: true
----
-apiVersion: v1
-kind: Pod
-metadata:
-  name: non-federated-frontend
-  namespace: federation-demo
-  labels:
-    app: non-federated-frontend
-spec:
-  serviceAccountName: non-federated-frontend
-  containers:
-  - name: client
-    image: python:3.11-slim
-    command: ["/bin/bash", "-c"]
-    args:
-    - |
-      apt-get update -qq && apt-get install -y curl -qq
+#       pip install requests --quiet
+#       python3 /app.py
+#     volumeMounts:
+#     - name: spiffe-workload-api
+#       mountPath: /spiffe-workload-api
+#       readOnly: true
+#   volumes:
+#   - name: spiffe-workload-api
+#     csi:
+#       driver: csi.spiffe.io
+#       readOnly: true
+# ---
+# apiVersion: v1
+# kind: Pod
+# metadata:
+#   name: non-federated-frontend
+#   namespace: federation-demo
+#   labels:
+#     app: non-federated-frontend
+# spec:
+#   serviceAccountName: non-federated-frontend
+#   containers:
+#   - name: client
+#     image: python:3.11-slim
+#     command: ["/bin/bash", "-c"]
+#     args:
+#     - |
+#       apt-get update -qq && apt-get install -y curl -qq
       
-      cat > /app.py << 'PYEOF'
-      import requests
-      import time
-      from datetime import datetime
+#       cat > /app.py << 'PYEOF'
+#       import requests
+#       import time
+#       from datetime import datetime
       
-      backend_url = "http://non-federated-backend.federation-demo.svc.cluster.local:8081/api/stock-data"
+#       backend_url = "http://non-federated-backend.federation-demo.svc.cluster.local:8081/api/stock-data"
       
-      print("=" * 70)
-      print("🚀 NON-FEDERATED FRONTEND CLIENT (Cluster 1)")
-      print("=" * 70)
-      print("❌ Federation DISABLED")
-      print("❌ Trust Domain: $CLUSTER1_TRUST_DOMAIN")
-      print("❌ Does NOT trust: $CLUSTER2_TRUST_DOMAIN")
-      print("")
-      print(f"🎯 Target backend: {backend_url}")
-      print("⚠️  Expected: Requests will FAIL (no federation)")
-      print("🔄 Will try calling API every 30 seconds...")
-      print("")
+#       print("=" * 70)
+#       print("🚀 NON-FEDERATED FRONTEND CLIENT (Cluster 1)")
+#       print("=" * 70)
+#       print("❌ Federation DISABLED")
+#       print("❌ Trust Domain: $CLUSTER1_TRUST_DOMAIN")
+#       print("❌ Does NOT trust: $CLUSTER2_TRUST_DOMAIN")
+#       print("")
+#       print(f"🎯 Target backend: {backend_url}")
+#       print("⚠️  Expected: Requests will FAIL (no federation)")
+#       print("🔄 Will try calling API every 30 seconds...")
+#       print("")
       
-      time.sleep(10)
+#       time.sleep(10)
       
-      while True:
-          try:
-              print("=" * 70)
-              print(f"[{datetime.now().strftime('%H:%M:%S')}] 📤 CALLING NON-FEDERATED BACKEND...")
-              print(f"   URL: {backend_url}")
+#       while True:
+#           try:
+#               print("=" * 70)
+#               print(f"[{datetime.now().strftime('%H:%M:%S')}] 📤 CALLING NON-FEDERATED BACKEND...")
+#               print(f"   URL: {backend_url}")
               
-              response = requests.get(backend_url, timeout=10)
+#               response = requests.get(backend_url, timeout=10)
               
-              if response.status_code == 403:
-                  data = response.json()
-                  print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ REJECTED (EXPECTED)")
-                  print("")
-                  print(f"   Error: {data.get('error')}")
-                  print(f"   Reason: Backend has no $CLUSTER1_TRUST_DOMAIN bundle")
-                  print("")
-                  print("✅ This is CORRECT - proves federation is required!")
-              else:
-                  print(f"[{datetime.now().strftime('%H:%M:%S')}] Unexpected status: {response.status_code}")
+#               if response.status_code == 403:
+#                   data = response.json()
+#                   print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ REJECTED (EXPECTED)")
+#                   print("")
+#                   print(f"   Error: {data.get('error')}")
+#                   print(f"   Reason: Backend has no $CLUSTER1_TRUST_DOMAIN bundle")
+#                   print("")
+#                   print("✅ This is CORRECT - proves federation is required!")
+#               else:
+#                   print(f"[{datetime.now().strftime('%H:%M:%S')}] Unexpected status: {response.status_code}")
                   
-          except Exception as e:
-              print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ FAILED: {e}")
-              print("✅ This is EXPECTED - no federation configured!")
+#           except Exception as e:
+#               print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ FAILED: {e}")
+#               print("✅ This is EXPECTED - no federation configured!")
           
-          print("")
-          print("⏳ Waiting 30 seconds...")
-          time.sleep(30)
-      PYEOF
+#           print("")
+#           print("⏳ Waiting 30 seconds...")
+#           time.sleep(30)
+#       PYEOF
       
-      pip install requests --quiet
-      python3 /app.py
-    volumeMounts:
-    - name: spiffe-workload-api
-      mountPath: /spiffe-workload-api
-      readOnly: true
-  volumes:
-  - name: spiffe-workload-api
-    csi:
-      driver: csi.spiffe.io
-      readOnly: true
-EOF
+#       pip install requests --quiet
+#       python3 /app.py
+#     volumeMounts:
+#     - name: spiffe-workload-api
+#       mountPath: /spiffe-workload-api
+#       readOnly: true
+#   volumes:
+#   - name: spiffe-workload-api
+#     csi:
+#       driver: csi.spiffe.io
+#       readOnly: true
+# EOF
 
-echo -e "${GREEN}✓${NC} Test workloads deployed"
-echo ""
+# echo -e "${GREEN}✓${NC} Test workloads deployed"
+# echo ""
 
-# Wait for pods
-echo "Waiting for pods to be ready..."
-sleep 30
+# # Wait for pods
+# echo "Waiting for pods to be ready..."
+# sleep 30
 
-echo ""
-echo -e "${GREEN}╔════════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║                    SETUP COMPLETE!                                 ║${NC}"
-echo -e "${GREEN}╚════════════════════════════════════════════════════════════════════╝${NC}"
-echo ""
+# echo ""
+# echo -e "${GREEN}╔════════════════════════════════════════════════════════════════════╗${NC}"
+# echo -e "${GREEN}║                    SETUP COMPLETE!                                 ║${NC}"
+# echo -e "${GREEN}╚════════════════════════════════════════════════════════════════════╝${NC}"
+# echo ""
 
-# Get backend URLs
-FED_BACKEND_URL=$(kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" get route federated-backend -n federation-demo -o jsonpath='https://{.spec.host}' 2>/dev/null || echo "pending...")
-NON_FED_BACKEND_URL=$(kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" get route non-federated-backend -n federation-demo -o jsonpath='https://{.spec.host}' 2>/dev/null || echo "pending...")
+# # Get backend URLs
+# FED_BACKEND_URL=$(kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" get route federated-backend -n federation-demo -o jsonpath='https://{.spec.host}' 2>/dev/null || echo "pending...")
+# NON_FED_BACKEND_URL=$(kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" get route non-federated-backend -n federation-demo -o jsonpath='https://{.spec.host}' 2>/dev/null || echo "pending...")
 
-echo -e "${BLUE}📊 Federation Summary:${NC}"
-echo "  Cluster 1: $CLUSTER1_TRUST_DOMAIN"
-echo "  Cluster 2: $CLUSTER2_TRUST_DOMAIN"
-echo "  Status: Configured and operational"
-echo ""
+# echo -e "${BLUE}📊 Federation Summary:${NC}"
+# echo "  Cluster 1: $CLUSTER1_TRUST_DOMAIN"
+# echo "  Cluster 2: $CLUSTER2_TRUST_DOMAIN"
+# echo "  Status: Configured and operational"
+# echo ""
 
-echo -e "${BLUE}🌐 Backend API URLs:${NC}"
-echo "  Federated:     $FED_BACKEND_URL/api/stock-data"
-echo "  Non-Federated: $NON_FED_BACKEND_URL/api/stock-data"
-echo ""
+# echo -e "${BLUE}🌐 Backend API URLs:${NC}"
+# echo "  Federated:     $FED_BACKEND_URL/api/stock-data"
+# echo "  Non-Federated: $NON_FED_BACKEND_URL/api/stock-data"
+# echo ""
 
-echo -e "${BLUE}🧪 TEST COMMANDS:${NC}"
-echo ""
-echo "1️⃣  Verify trust bundle exchange:"
-echo "   kubectl --kubeconfig $CLUSTER1_KUBECONFIG exec -n zero-trust-workload-identity-manager spire-server-0 -c spire-server -- ./spire-server bundle list"
-echo ""
-echo "2️⃣  Watch federated frontend logs (see API calls):"
-echo "   kubectl --kubeconfig $CLUSTER1_KUBECONFIG logs -f federated-frontend -n federation-demo"
-echo ""
-echo "3️⃣  Watch federated backend logs (see requests):"
-echo "   kubectl --kubeconfig $CLUSTER2_KUBECONFIG logs -f federated-backend -n federation-demo"
-echo ""
-echo "4️⃣  Test with curl (once routes are ready):"
-echo "   curl $FED_BACKEND_URL/api/stock-data"
-echo ""
-echo "5️⃣  Watch bundle rotation live:"
-echo "   kubectl --kubeconfig $CLUSTER1_KUBECONFIG logs -f -n zero-trust-workload-identity-manager spire-server-0 -c spire-server | grep 'Bundle refresh'"
-echo ""
+# echo -e "${BLUE}🧪 TEST COMMANDS:${NC}"
+# echo ""
+# echo "1️⃣  Verify trust bundle exchange:"
+# echo "   kubectl --kubeconfig $CLUSTER1_KUBECONFIG exec -n zero-trust-workload-identity-manager spire-server-0 -c spire-server -- ./spire-server bundle list"
+# echo ""
+# echo "2️⃣  Watch federated frontend logs (see API calls):"
+# echo "   kubectl --kubeconfig $CLUSTER1_KUBECONFIG logs -f federated-frontend -n federation-demo"
+# echo ""
+# echo "3️⃣  Watch federated backend logs (see requests):"
+# echo "   kubectl --kubeconfig $CLUSTER2_KUBECONFIG logs -f federated-backend -n federation-demo"
+# echo ""
+# echo "4️⃣  Test with curl (once routes are ready):"
+# echo "   curl $FED_BACKEND_URL/api/stock-data"
+# echo ""
+# echo "5️⃣  Watch bundle rotation live:"
+# echo "   kubectl --kubeconfig $CLUSTER1_KUBECONFIG logs -f -n zero-trust-workload-identity-manager spire-server-0 -c spire-server | grep 'Bundle refresh'"
+# echo ""
 
-echo -e "${BLUE}📝 Documentation:${NC}"
-echo "  All setup details: $WORK_DIR/"
-echo "  Federation config: Saved in $WORK_DIR/"
-echo ""
+# echo -e "${BLUE}📝 Documentation:${NC}"
+# echo "  All setup details: $WORK_DIR/"
+# echo "  Federation config: Saved in $WORK_DIR/"
+# echo ""
 
-echo -e "${GREEN}🎉 Federation setup complete! Wait 2-3 minutes for pods to start, then test!${NC}"
-echo ""
+# echo -e "${GREEN}🎉 Federation setup complete! Wait 2-3 minutes for pods to start, then test!${NC}"
+# echo ""
 
-# Save test commands to file
-cat > "$WORK_DIR/test-commands.sh" <<TESTEOF
-#!/bin/bash
+# # Save test commands to file
+# cat > "$WORK_DIR/test-commands.sh" <<TESTEOF
+# #!/bin/bash
 
-echo "🧪 Testing Federation..."
-echo ""
+# echo "🧪 Testing Federation..."
+# echo ""
 
-echo "1. Trust bundles:"
-kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" exec -n zero-trust-workload-identity-manager spire-server-0 -c spire-server -- ./spire-server bundle list
+# echo "1. Trust bundles:"
+# kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" exec -n zero-trust-workload-identity-manager spire-server-0 -c spire-server -- ./spire-server bundle list
 
-echo ""
-echo "2. Federated entry:"
-kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" exec -n zero-trust-workload-identity-manager spire-server-0 -c spire-server -- ./spire-server entry show | grep -A 12 "federated-backend"
+# echo ""
+# echo "2. Federated entry:"
+# kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" exec -n zero-trust-workload-identity-manager spire-server-0 -c spire-server -- ./spire-server entry show | grep -A 12 "federated-backend"
 
-echo ""
-echo "3. Recent rotations:"
-kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" logs -n zero-trust-workload-identity-manager spire-server-0 -c spire-server --tail=200 | grep "Bundle refreshed" | tail -5
+# echo ""
+# echo "3. Recent rotations:"
+# kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" logs -n zero-trust-workload-identity-manager spire-server-0 -c spire-server --tail=200 | grep "Bundle refreshed" | tail -5
 
-echo ""
-echo "4. Backend URLs:"
-echo "   Federated:     $FED_BACKEND_URL/api/stock-data"
-echo "   Non-Federated: $NON_FED_BACKEND_URL/api/stock-data"
+# echo ""
+# echo "4. Backend URLs:"
+# echo "   Federated:     $FED_BACKEND_URL/api/stock-data"
+# echo "   Non-Federated: $NON_FED_BACKEND_URL/api/stock-data"
 
-echo ""
-echo "5. Curl test (once pods are running):"
-echo "   curl $FED_BACKEND_URL/api/stock-data"
-TESTEOF
+# echo ""
+# echo "5. Curl test (once pods are running):"
+# echo "   curl $FED_BACKEND_URL/api/stock-data"
+# TESTEOF
 
-chmod +x "$WORK_DIR/test-commands.sh"
+# chmod +x "$WORK_DIR/test-commands.sh"
 
-echo -e "${YELLOW}💾 Test commands saved to: $WORK_DIR/test-commands.sh${NC}"
-echo ""
+# echo -e "${YELLOW}💾 Test commands saved to: $WORK_DIR/test-commands.sh${NC}"
+# echo ""
 
