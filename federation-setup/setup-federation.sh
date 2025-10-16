@@ -281,41 +281,41 @@ kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" apply -f "$WORK_DIR/cluster2-cm-upda
 echo -e "${GREEN}✓${NC} Updated SPIRE server configurations"
 echo ""
 
-# # Step 3: Expose port 8443 on SPIRE server pods
-# echo -e "${YELLOW}Step 3: Exposing federation port on SPIRE servers...${NC}"
-# echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+# Step 3: Expose port 8443 on SPIRE server pods
+echo -e "${YELLOW}Step 3: Exposing federation port on SPIRE servers...${NC}"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-# kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" patch statefulset spire-server -n zero-trust-workload-identity-manager --type='json' \
-#   -p='[{"op": "add", "path": "/spec/template/spec/containers/0/ports/-", "value": {"name": "federation", "containerPort": 8443, "protocol": "TCP"}}]' 2>/dev/null || echo "Port already exposed or patch failed (continuing...)"
+kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" patch statefulset spire-server -n zero-trust-workload-identity-manager --type='json' \
+  -p='[{"op": "add", "path": "/spec/template/spec/containers/0/ports/-", "value": {"name": "federation", "containerPort": 8443, "protocol": "TCP"}}]' 2>/dev/null || echo "Port already exposed or patch failed (continuing...)"
 
-# kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" patch statefulset spire-server -n zero-trust-workload-identity-manager --type='json' \
-#   -p='[{"op": "add", "path": "/spec/template/spec/containers/0/ports/-", "value": {"name": "federation", "containerPort": 8443, "protocol": "TCP"}}]' 2>/dev/null || echo "Port already exposed or patch failed (continuing...)"
+kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" patch statefulset spire-server -n zero-trust-workload-identity-manager --type='json' \
+  -p='[{"op": "add", "path": "/spec/template/spec/containers/0/ports/-", "value": {"name": "federation", "containerPort": 8443, "protocol": "TCP"}}]' 2>/dev/null || echo "Port already exposed or patch failed (continuing...)"
 
-# echo -e "${GREEN}✓${NC} Federation port exposed"
-# echo ""
+echo -e "${GREEN}✓${NC} Federation port exposed"
+echo ""
 
-# # Step 4: Restart SPIRE servers
-# echo -e "${YELLOW}Step 4: Restarting SPIRE servers...${NC}"
-# echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+# Step 4: Restart SPIRE servers
+echo -e "${YELLOW}Step 4: Restarting SPIRE servers...${NC}"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-# kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" rollout restart statefulset spire-server -n zero-trust-workload-identity-manager
-# kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" rollout restart statefulset spire-server -n zero-trust-workload-identity-manager
+kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" rollout restart statefulset spire-server -n zero-trust-workload-identity-manager
+kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" rollout restart statefulset spire-server -n zero-trust-workload-identity-manager
 
-# echo "Waiting for SPIRE servers to be ready..."
-# kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" wait --for=condition=ready pod/spire-server-0 -n zero-trust-workload-identity-manager --timeout=120s
-# kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" wait --for=condition=ready pod/spire-server-0 -n zero-trust-workload-identity-manager --timeout=120s
+echo "Waiting for SPIRE servers to be ready..."
+kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" wait --for=condition=ready pod/spire-server-0 -n zero-trust-workload-identity-manager --timeout=120s
+kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" wait --for=condition=ready pod/spire-server-0 -n zero-trust-workload-identity-manager --timeout=120s
 
-# echo -e "${GREEN}✓${NC} SPIRE servers restarted and ready"
-# echo ""
+echo -e "${GREEN}✓${NC} SPIRE servers restarted and ready"
+echo ""
 
 # Step 5: Extract trust bundles
 echo -e "${YELLOW}Step 5: Extracting trust bundles...${NC}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" exec -n zero-trust-workload-identity-manager spire-server-0 -c spire-server -- \
+kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" exec -n zero-trust-workload-identity-manager spire-server-0 -- \
   ./spire-server bundle show -format spiffe > "$WORK_DIR/cluster1-bundle.json"
 
-kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" exec -n zero-trust-workload-identity-manager spire-server-0 -c spire-server -- \
+kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" exec -n zero-trust-workload-identity-manager spire-server-0 -- \
   ./spire-server bundle show -format spiffe > "$WORK_DIR/cluster2-bundle.json"
 
 echo -e "${GREEN}✓${NC} Trust bundles extracted"
