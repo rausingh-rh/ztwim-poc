@@ -1,0 +1,51 @@
+Found 5 entries
+Entry ID         : rausingh-1.40bba1d8-7284-4bfc-b830-ea5c9953439a
+SPIFFE ID        : spiffe://apps.mykastur14.gcp.devcluster.openshift.com/ns/cert-manager/sa/cert-manager
+Parent ID        : spiffe://apps.mykastur14.gcp.devcluster.openshift.com/spire/agent/k8s_psat/rausingh-1/ded574b0-520f-43c5-8416-a74905698187
+Revision         : 0
+X509-SVID TTL    : default
+JWT-SVID TTL     : default
+Selector         : k8s:pod-uid:1c229538-8828-4d57-ad8a-25e20b09f0c5
+Hint             : default
+
+Entry ID         : rausingh-1.4f47da06-eb93-4912-8d52-424e37a64c59
+SPIFFE ID        : spiffe://apps.mykastur14.gcp.devcluster.openshift.com/ns/cert-manager/sa/cert-manager-cainjector
+Parent ID        : spiffe://apps.mykastur14.gcp.devcluster.openshift.com/spire/agent/k8s_psat/rausingh-1/ded574b0-520f-43c5-8416-a74905698187
+Revision         : 0
+X509-SVID TTL    : default
+JWT-SVID TTL     : default
+Selector         : k8s:pod-uid:8330e67f-157b-4bea-b8ab-7375197731bd
+Hint             : default
+
+Entry ID         : rausingh-1.d0a6d5c8-525a-4c69-8f99-e2d1110b802c
+SPIFFE ID        : spiffe://apps.mykastur14.gcp.devcluster.openshift.com/ns/cert-manager/sa/cert-manager-webhook
+Parent ID        : spiffe://apps.mykastur14.gcp.devcluster.openshift.com/spire/agent/k8s_psat/rausingh-1/908a17fa-bc0b-4c21-9a03-7af747120bce
+Revision         : 0
+X509-SVID TTL    : default
+JWT-SVID TTL     : default
+Selector         : k8s:pod-uid:c9b72b0a-4fd2-419e-9199-1da4e3e0a386
+Hint             : default
+
+Entry ID         : rausingh-1.f56d0ebe-bbc1-4e29-8b2e-e5d5866b949d
+SPIFFE ID        : spiffe://apps.mykastur14.gcp.devcluster.openshift.com/ns/federation-demo/sa/test-workload-c1
+Parent ID        : spiffe://apps.mykastur14.gcp.devcluster.openshift.com/spire/agent/k8s_psat/rausingh-1/13ac6c69-94ba-4bae-a2fd-a21388127ee0
+Revision         : 0
+X509-SVID TTL    : default
+JWT-SVID TTL     : default
+Selector         : k8s:pod-uid:9eac6c04-c98e-40fd-8a97-71b4ce165a5b
+FederatesWith    : apps.aagnihot-cluster-kdh.devcluster.openshift.com
+
+Entry ID         : rausingh-1.889ff442-b486-4c57-8267-b5c4f7c1e16c
+SPIFFE ID        : spiffe://apps.mykastur14.gcp.devcluster.openshift.com/ns/zero-trust-workload-identity-manager/sa/spire-spiffe-oidc-discovery-provider
+Parent ID        : spiffe://apps.mykastur14.gcp.devcluster.openshift.com/spire/agent/k8s_psat/rausingh-1/908a17fa-bc0b-4c21-9a03-7af747120bce
+Revision         : 0
+X509-SVID TTL    : default
+JWT-SVID TTL     : default
+Selector         : k8s:pod-uid:9968a003-ac85-43b1-afbf-9eac7ceba510
+DNS name         : oidc-discovery.apps.mykastur14.gcp.devcluster.openshift.com
+DNS name         : spire-spiffe-oidc-discovery-provider
+DNS name         : spire-spiffe-oidc-discovery-provider.zero-trust-workload-identity-manager
+DNS name         : spire-spiffe-oidc-discovery-provider.zero-trust-workload-identity-manager.svc
+DNS name         : spire-spiffe-oidc-discovery-provider.zero-trust-workload-identity-manager.svc.cluster.local
+Hint             : oidc-discovery-provider
+

@@ -1,0 +1,24 @@
+Found 2 entries
+Entry ID         : anirudh-1.fa84940c-a9db-46e1-9c5f-fbc21ba04983
+SPIFFE ID        : spiffe://apps.aagnihot-cluster-kdh.devcluster.openshift.com/ns/federation-demo/sa/test-workload-c2
+Parent ID        : spiffe://apps.aagnihot-cluster-kdh.devcluster.openshift.com/spire/agent/k8s_psat/anirudh-1/ffe48454-ff55-4523-ae93-e484a7ecac89
+Revision         : 0
+X509-SVID TTL    : default
+JWT-SVID TTL     : default
+Selector         : k8s:pod-uid:e3118675-dc31-4a71-97f7-e2ae960e7942
+FederatesWith    : apps.mykastur14.gcp.devcluster.openshift.com
+
+Entry ID         : anirudh-1.5d3217d3-cca9-4e6d-8c78-5691fdf7644d
+SPIFFE ID        : spiffe://apps.aagnihot-cluster-kdh.devcluster.openshift.com/ns/zero-trust-workload-identity-manager/sa/spire-spiffe-oidc-discovery-provider
+Parent ID        : spiffe://apps.aagnihot-cluster-kdh.devcluster.openshift.com/spire/agent/k8s_psat/anirudh-1/ad1cc5d5-ab72-4de3-86c1-065377cfc77e
+Revision         : 0
+X509-SVID TTL    : default
+JWT-SVID TTL     : default
+Selector         : k8s:pod-uid:55cbc9e6-c757-450b-a50a-e93c228b145f
+DNS name         : oidc-discovery.apps.aagnihot-cluster-kdh.devcluster.openshift.com
+DNS name         : spire-spiffe-oidc-discovery-provider
+DNS name         : spire-spiffe-oidc-discovery-provider.zero-trust-workload-identity-manager
+DNS name         : spire-spiffe-oidc-discovery-provider.zero-trust-workload-identity-manager.svc
+DNS name         : spire-spiffe-oidc-discovery-provider.zero-trust-workload-identity-manager.svc.cluster.local
+Hint             : oidc-discovery-provider
+

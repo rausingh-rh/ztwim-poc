@@ -66,7 +66,8 @@ federation-setup/
 ```bash
 federation-setup/
 ├── verify-federation.sh             # Verify 2-way federation
-└── verify-3way-federation.sh        # Verify 3-way federation
+├── verify-3way-federation.sh        # Verify 3-way federation
+└── monitor-bundle-refresh.sh        # 🆕 Interactive bundle refresh monitor
 ```
 
 ### Test Scripts
@@ -104,6 +105,20 @@ federation-setup/test-scripts/
 ---
 
 ## 📋 Reference Information
+
+### 🔄 Trust Bundle Refresh
+
+| Document | Description |
+|----------|-------------|
+| **[TRUST_BUNDLE_REFRESH_GUIDE.md](federation-setup/TRUST_BUNDLE_REFRESH_GUIDE.md)** | 🆕 Complete guide on bundle refresh behavior |
+| **[BUNDLE_REFRESH_CHEATSHEET.md](federation-setup/BUNDLE_REFRESH_CHEATSHEET.md)** | 🆕 Quick reference for refresh intervals |
+| **[monitor-bundle-refresh.sh](federation-setup/monitor-bundle-refresh.sh)** | 🆕 Interactive monitoring tool |
+
+**Key Facts**:
+- Refresh Hint: 300 seconds (5 minutes)
+- Actual Poll Interval: ~75 seconds (300 ÷ 4)
+- Refreshes per Hour: ~48
+- JSON Field: `spiffe_refresh_hint`
 
 ### Cluster Details
 
@@ -144,8 +159,23 @@ kubectl exec -n zero-trust-workload-identity-manager spire-server-0 -c spire-ser
 
 ### Watch Bundle Rotation
 ```bash
+# Real-time monitoring
 kubectl logs -f -n zero-trust-workload-identity-manager spire-server-0 -c spire-server | \
   grep "Bundle refresh"
+
+# OR use the interactive monitor
+./federation-setup/monitor-bundle-refresh.sh
+```
+
+### Check Bundle Refresh Configuration
+```bash
+# Check refresh hint in federation endpoint JSON
+curl -k https://federation-endpoint/ | jq '.spiffe_refresh_hint'
+# Returns: 300 (seconds)
+
+# View recent refresh history
+kubectl logs -n zero-trust-workload-identity-manager spire-server-0 -c spire-server --tail=500 | \
+  grep "Bundle refreshed" | tail -10
 ```
 
 ---
@@ -179,7 +209,10 @@ ztwim-poc/
 │   ├── verify-federation.sh
 │   ├── verify-3way-federation.sh
 │   ├── deploy-auto-federation.sh
+│   ├── monitor-bundle-refresh.sh       🆕 Bundle refresh monitor
 │   ├── THREE_WAY_FEDERATION_QUICK_REFERENCE.md
+│   ├── TRUST_BUNDLE_REFRESH_GUIDE.md   🆕 Bundle refresh docs
+│   ├── BUNDLE_REFRESH_CHEATSHEET.md    🆕 Quick reference
 │   │
 │   ├── test-scripts/
 │   │   ├── direct-test.sh
@@ -255,6 +288,11 @@ Examples include:
 
 ## 🔄 Recent Changes
 
+**October 22, 2025**:
+- 🆕 Added comprehensive trust bundle refresh documentation
+- 🆕 Created interactive bundle refresh monitoring tool
+- 🆕 Added bundle refresh cheat sheet
+
 **October 13, 2025**:
 - ✅ Added 3-way federation
 - ✅ Deployed universal auto-federation ClusterSPIFFEID
@@ -293,5 +331,7 @@ For questions or issues:
 **Last Updated**: October 13, 2025  
 **Status**: Production Ready  
 **Repository**: `/home/rausingh/Documents/oape/ztwim-poc`
+
+
 
 

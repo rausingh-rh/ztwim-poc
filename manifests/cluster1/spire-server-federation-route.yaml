@@ -1,0 +1,34 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"route.openshift.io/v1","kind":"Route","metadata":{"annotations":{},"name":"spire-server-federation","namespace":"zero-trust-workload-identity-manager"},"spec":{"port":{"targetPort":"federation"},"tls":{"insecureEdgeTerminationPolicy":"Redirect","termination":"passthrough"},"to":{"kind":"Service","name":"spire-server-federation"}}}
+    openshift.io/host.generated: "true"
+  creationTimestamp: "2025-10-17T12:52:31Z"
+  name: spire-server-federation
+  namespace: zero-trust-workload-identity-manager
+  resourceVersion: "587326"
+  uid: d554e2ff-3fe2-483b-a38b-a3542d160b55
+spec:
+  host: spire-server-federation-zero-trust-workload-identity-manager.apps.mykastur14.gcp.devcluster.openshift.com
+  port:
+    targetPort: federation
+  tls:
+    insecureEdgeTerminationPolicy: Redirect
+    termination: passthrough
+  to:
+    kind: Service
+    name: spire-server-federation
+    weight: 100
+  wildcardPolicy: None
+status:
+  ingress:
+  - conditions:
+    - lastTransitionTime: "2025-10-17T12:52:31Z"
+      status: "True"
+      type: Admitted
+    host: spire-server-federation-zero-trust-workload-identity-manager.apps.mykastur14.gcp.devcluster.openshift.com
+    routerCanonicalHostname: router-default.apps.mykastur14.gcp.devcluster.openshift.com
+    routerName: default
+    wildcardPolicy: None

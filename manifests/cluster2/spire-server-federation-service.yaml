@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"labels":{"app.kubernetes.io/name":"spire-server"},"name":"spire-server-federation","namespace":"zero-trust-workload-identity-manager"},"spec":{"ports":[{"name":"federation","port":8443,"protocol":"TCP","targetPort":8443}],"selector":{"app.kubernetes.io/instance":"cluster-zero-trust-workload-identity-manager","app.kubernetes.io/name":"spire-server"},"type":"ClusterIP"}}
+  creationTimestamp: "2025-10-17T12:52:36Z"
+  labels:
+    app.kubernetes.io/name: spire-server
+  name: spire-server-federation
+  namespace: zero-trust-workload-identity-manager
+  resourceVersion: "121966"
+  uid: e427861c-26ae-48e5-981d-328f3b8d853a
+spec:
+  clusterIP: 172.30.60.125
+  clusterIPs:
+  - 172.30.60.125
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - name: federation
+    port: 8443
+    protocol: TCP
+    targetPort: 8443
+  selector:
+    app.kubernetes.io/instance: cluster-zero-trust-workload-identity-manager
+    app.kubernetes.io/name: spire-server
+  sessionAffinity: None
+  type: ClusterIP
+status:
+  loadBalancer: {}

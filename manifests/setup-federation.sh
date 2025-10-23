@@ -217,7 +217,17 @@ config['server']['federation']['bundle_endpoint'] = {
     'port': 8443
 }
 
-
+# KEY MUST BE TRUST DOMAIN, NOT URL!
+config['server']['federation']['federates_with'] = {
+    '$fed_trust_domain': {
+        'bundle_endpoint_url': '$fed_url',
+        'bundle_endpoint_profile': {
+            'https_spiffe': {
+                'endpoint_spiffe_id': '$fed_spiffe_id'
+            }
+        }
+    }
+}
 
 print(json.dumps(config, indent=2))
 " > "$output_file"
@@ -292,7 +302,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" rollout restart statefulset spire-server -n zero-trust-workload-identity-manager
 kubectl --kubeconfig "$CLUSTER2_KUBECONFIG" rollout restart statefulset spire-server -n zero-trust-workload-identity-manager
 
-sleep 120
+sleep 180
 
 echo "Waiting for SPIRE servers to be ready..."
 kubectl --kubeconfig "$CLUSTER1_KUBECONFIG" wait --for=condition=ready pod/spire-server-0 -n zero-trust-workload-identity-manager --timeout=120s

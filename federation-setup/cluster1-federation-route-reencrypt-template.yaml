@@ -1,0 +1,44 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: spire-server-federation
+  namespace: zero-trust-workload-identity-manager
+  labels:
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/component: control-plane
+spec:
+  to:
+    kind: Service
+    name: spire-server-federation
+    weight: 100
+  port:
+    targetPort: federation
+  tls:
+    termination: reencrypt
+    # Edge certificate (for external clients connecting to the route)
+    # You need to replace this with actual certificate content
+    certificate: |
+      -----BEGIN CERTIFICATE-----
+      <REPLACE_WITH_CLUSTER1_ROUTE_CERTIFICATE>
+      -----END CERTIFICATE-----
+    # Edge private key
+    key: |
+      -----BEGIN PRIVATE KEY-----
+      <REPLACE_WITH_CLUSTER1_ROUTE_PRIVATE_KEY>
+      -----END PRIVATE KEY-----
+    # CA certificate that signed the edge certificate
+    caCertificate: |
+      -----BEGIN CERTIFICATE-----
+      <REPLACE_WITH_EDGE_CA_CERTIFICATE>
+      -----END CERTIFICATE-----
+    # Destination CA certificate (SPIRE server's CA)
+    # Get this from: kubectl get configmap spire-bundle -n zero-trust-workload-identity-manager -o jsonpath='{.data.bundle\.crt}'
+    destinationCACertificate: |
+      -----BEGIN CERTIFICATE-----
+      <REPLACE_WITH_SPIRE_SERVER_CA_FROM_BUNDLE>
+      -----END CERTIFICATE-----
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+
+
+
