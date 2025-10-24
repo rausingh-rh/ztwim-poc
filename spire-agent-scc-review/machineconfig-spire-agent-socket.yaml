@@ -1,0 +1,30 @@
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  labels:
+    machineconfiguration.openshift.io/role: worker
+  name: 99-spire-agent-socket-directory
+spec:
+  config:
+    ignition:
+      version: 3.2.0
+    systemd:
+      units:
+        - name: spire-agent-socket-dir.service
+          enabled: true
+          contents: |
+            [Unit]
+            Description=Create SPIRE Agent socket directory with correct permissions
+            Before=kubelet.service
+            ConditionPathExists=!/run/spire/agent-sockets
+
+            [Service]
+            Type=oneshot
+            ExecStart=/usr/bin/mkdir -p /run/spire/agent-sockets
+            ExecStart=/usr/bin/chown 1000:1000 /run/spire/agent-sockets
+            ExecStart=/usr/bin/chmod 0755 /run/spire/agent-sockets
+            RemainAfterExit=true
+
+            [Install]
+            WantedBy=multi-user.target
+
