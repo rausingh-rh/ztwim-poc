@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: demo-workload
+  namespace: svid-demo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-workload
+  namespace: svid-demo
+  labels:
+    app: demo-workload
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-workload
+  template:
+    metadata:
+      labels:
+        app: demo-workload
+    spec:
+      serviceAccountName: demo-workload
+      containers:
+      - name: workload
+        image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+        command:
+        - /bin/sh
+        - -c
+        - |
+          echo "=== SVID Demo Workload ==="
+          echo "Waiting for SPIFFE CSI driver to mount SVIDs..."
+          while true; do
+            if [ -e /spiffe-workload-api/spire-agent.sock ]; then
+              echo "--- Workload API socket found at /spiffe-workload-api/spire-agent.sock ---"
+              ls -la /spiffe-workload-api/
+              break
+            fi
+            echo "Waiting for Workload API socket..."
+            sleep 2
+          done
+          echo "=== SVID Demo Workload Running ==="
+          sleep infinity
+        volumeMounts:
+        - name: spiffe-workload-api
+          mountPath: /spiffe-workload-api
+          readOnly: true
+      volumes:
+      - name: spiffe-workload-api
+        csi:
+          driver: csi.spiffe.io
+          readOnly: true
