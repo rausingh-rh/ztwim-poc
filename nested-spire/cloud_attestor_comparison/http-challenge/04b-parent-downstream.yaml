@@ -1,0 +1,12 @@
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterStaticEntry
+metadata:
+  name: nested-spire-child01-downstream
+spec:
+  className: zero-trust-workload-identity-manager-spire
+  parentID: spiffe://${TRUST_DOMAIN}/downstream/child01
+  spiffeID: spiffe://${TRUST_DOMAIN}/downstream/child01/spire-server
+  selectors:
+  - unix:uid:1000730000
+  downstream: true
+  x509SVIDTTL: 1h

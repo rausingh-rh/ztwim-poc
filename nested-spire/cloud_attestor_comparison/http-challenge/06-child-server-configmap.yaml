@@ -1,0 +1,131 @@
+apiVersion: v1
+data:
+  server.conf: |-
+    {
+      "health_checks": {
+        "bind_address": "0.0.0.0",
+        "bind_port": "8080",
+        "listener_enabled": true,
+        "live_path": "/live",
+        "ready_path": "/ready"
+      },
+      "plugins": {
+        "DataStore": [
+          {
+            "sql": {
+              "plugin_data": {
+                "connection_string": "/run/spire/data/datastore.sqlite3",
+                "database_type": "sqlite3",
+                "disable_migration": false,
+                "max_idle_conns": 2,
+                "max_open_conns": 100
+              }
+            }
+          }
+        ],
+        "KeyManager": [
+          {
+            "disk": {
+              "plugin_data": {
+                "keys_path": "/run/spire/data/keys.json"
+              }
+            }
+          }
+        ],
+        "NodeAttestor": [
+          {
+            "k8s_psat": {
+              "plugin_data": {
+                "clusters": [
+                  {
+                    "child01": {
+                      "allowed_node_label_keys": [],
+                      "allowed_pod_label_keys": [],
+                      "audience": [
+                        "spire-server"
+                      ],
+                      "service_account_allow_list": [
+                        "zero-trust-workload-identity-manager:spire-agent"
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "Notifier": [
+          {
+            "k8sbundle": {
+              "plugin_data": {
+                "config_map": "spire-bundle",
+                "namespace": "zero-trust-workload-identity-manager"
+              }
+            }
+          }
+        ],
+        "UpstreamAuthority": [
+          {
+            "spire": {
+              "plugin_data": {
+                "server_address": "spire-server-grpc.${TRUST_DOMAIN}",
+                "server_port": "443",
+                "workload_api_socket": "/run/spire/upstream-agent/spire-agent.sock"
+              }
+            }
+          }
+        ]
+      },
+      "server": {
+        "audit_log_enabled": false,
+        "bind_address": "0.0.0.0",
+        "bind_port": "8081",
+        "ca_key_type": "rsa-2048",
+        "ca_subject": [
+          {
+            "common_name": "${TRUST_DOMAIN}",
+            "country": [
+              "US"
+            ],
+            "organization": [
+              "RH"
+            ]
+          }
+        ],
+        "ca_ttl": "24h0m0s",
+        "data_dir": "/run/spire/data",
+        "default_jwt_svid_ttl": "5m0s",
+        "default_x509_svid_ttl": "1h0m0s",
+        "jwt_issuer": "https://oidc-discovery.${CHILD_CLUSTER_DOMAIN}",
+        "log_format": "text",
+        "log_level": "debug",
+        "trust_domain": "${TRUST_DOMAIN}"
+      },
+      "telemetry": {
+        "Prometheus": {
+          "host": "0.0.0.0",
+          "port": "9402"
+        }
+      }
+    }
+kind: ConfigMap
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"v1","data":{"server.conf":"{\n  \"health_checks\": {\n    \"bind_address\": \"0.0.0.0\",\n    \"bind_port\": \"8080\",\n    \"listener_enabled\": true,\n    \"live_path\": \"/live\",\n    \"ready_path\": \"/ready\"\n  },\n  \"plugins\": {\n    \"DataStore\": [\n      {\n        \"sql\": {\n          \"plugin_data\": {\n            \"connection_string\": \"/run/spire/data/datastore.sqlite3\",\n            \"database_type\": \"sqlite3\",\n            \"disable_migration\": false,\n            \"max_idle_conns\": 2,\n            \"max_open_conns\": 100\n          }\n        }\n      }\n    ],\n    \"KeyManager\": [\n      {\n        \"disk\": {\n          \"plugin_data\": {\n            \"keys_path\": \"/run/spire/data/keys.json\"\n          }\n        }\n      }\n    ],\n    \"NodeAttestor\": [\n      {\n        \"k8s_psat\": {\n          \"plugin_data\": {\n            \"clusters\": [\n              {\n                \"child01\": {\n                  \"allowed_node_label_keys\": [],\n                  \"allowed_pod_label_keys\": [],\n                  \"audience\": [\n                    \"spire-server\"\n                  ],\n                  \"service_account_allow_list\": [\n                    \"zero-trust-workload-identity-manager:spire-agent\"\n                  ]\n                }\n              }\n            ]\n          }\n        }\n      }\n    ],\n    \"Notifier\": [\n      {\n        \"k8sbundle\": {\n          \"plugin_data\": {\n            \"config_map\": \"spire-bundle\",\n            \"namespace\": \"zero-trust-workload-identity-manager\"\n          }\n        }\n      }\n    ],\n    \"UpstreamAuthority\": [\n      {\n        \"spire\": {\n          \"plugin_data\": {\n            \"server_address\": \"spire-server-grpc.${TRUST_DOMAIN}\",\n            \"server_port\": \"443\",\n            \"workload_api_socket\": \"/run/spire/upstream-agent/spire-agent.sock\"\n          }\n        }\n      }\n    ]\n  },\n  \"server\": {\n    \"audit_log_enabled\": false,\n    \"bind_address\": \"0.0.0.0\",\n    \"bind_port\": \"8081\",\n    \"ca_key_type\": \"rsa-2048\",\n    \"ca_subject\": [\n      {\n        \"common_name\": \"${TRUST_DOMAIN}\",\n        \"country\": [\n          \"US\"\n        ],\n        \"organization\": [\n          \"RH\"\n        ]\n      }\n    ],\n    \"ca_ttl\": \"24h0m0s\",\n    \"data_dir\": \"/run/spire/data\",\n    \"default_jwt_svid_ttl\": \"5m0s\",\n    \"default_x509_svid_ttl\": \"1h0m0s\",\n    \"jwt_issuer\": \"https://oidc-discovery.${CHILD_CLUSTER_DOMAIN}\",\n    \"log_format\": \"text\",\n    \"log_level\": \"debug\",\n    \"trust_domain\": \"${TRUST_DOMAIN}\"\n  },\n  \"telemetry\": {\n    \"Prometheus\": {\n      \"host\": \"0.0.0.0\",\n      \"port\": \"9402\"\n    }\n  }\n}"},"kind":"ConfigMap","metadata":{"annotations":{},"creationTimestamp":null,"name":"spire-server","namespace":"zero-trust-workload-identity-manager"}}
+  labels:
+    app.kubernetes.io/component: control-plane
+    app.kubernetes.io/instance: cluster-zero-trust-workload-identity-manager
+    app.kubernetes.io/managed-by: zero-trust-workload-identity-manager
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/part-of: zero-trust-workload-identity-manager
+    app.kubernetes.io/version: 1.14.7
+  name: spire-server
+  namespace: zero-trust-workload-identity-manager
+  ownerReferences:
+  - apiVersion: operator.openshift.io/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: SpireServer
+    name: cluster
+    uid: 13af77cd-8796-4489-bb21-a7ab7c9da233

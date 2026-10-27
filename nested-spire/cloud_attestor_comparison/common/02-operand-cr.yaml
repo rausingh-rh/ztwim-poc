@@ -1,0 +1,57 @@
+# Apply on BOTH clusters.
+# Use clusterName=parent01 for the parent, clusterName=child01 for the child.
+# Run:  envsubst < common/02-operand-cr.yaml | oc apply -f -
+#
+# IMPORTANT: All five CRs must exist before the operator deploys operand pods.
+# The SpireAgent CR must include nodeAttestor and workloadAttestors — without
+# them the agent config is generated without NodeAttestor/WorkloadAttestor
+# plugins and agents crash-loop with:
+#   "plugin type \"WorkloadAttestor\" constraint not satisfied: expected at least 1 but got 0"
+---
+apiVersion: operator.openshift.io/v1alpha1
+kind: ZeroTrustWorkloadIdentityManager
+metadata:
+  name: cluster
+spec:
+  clusterName: parent01          # Use "child01" on the child cluster
+  trustDomain: ${TRUST_DOMAIN}
+---
+apiVersion: operator.openshift.io/v1alpha1
+kind: SpireServer
+metadata:
+  name: cluster
+spec:
+  caSubject:
+    commonName: ${TRUST_DOMAIN}
+    country: "US"
+    organization: "RH"
+  datastore:
+    databaseType: sqlite3
+    connectionString: "/run/spire/data/datastore.sqlite3"
+  jwtIssuer: "https://oidc-discovery.${PARENT_CLUSTER_DOMAIN}"
+  persistence:
+    accessMode: ReadWriteOnce
+    size: 1Gi
+---
+apiVersion: operator.openshift.io/v1alpha1
+kind: SpireAgent
+metadata:
+  name: cluster
+spec:
+  nodeAttestor:
+    k8sPSATEnabled: "true"
+  workloadAttestors:
+    k8sEnabled: "true"
+---
+apiVersion: operator.openshift.io/v1alpha1
+kind: SpiffeCSIDriver
+metadata:
+  name: cluster
+spec: {}
+---
+apiVersion: operator.openshift.io/v1alpha1
+kind: SpireOIDCDiscoveryProvider
+metadata:
+  name: cluster
+spec:
+  jwtIssuer: "https://oidc-discovery.${PARENT_CLUSTER_DOMAIN}"

@@ -1,0 +1,17 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  creationTimestamp: '2026-10-26T12:02:16Z'
+  name: system:openshift:scc:hostnetwork
+  namespace: zero-trust-workload-identity-manager
+  resourceVersion: '54668'
+  uid: ae95850e-e736-47b5-a066-76b92deaa99d
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:openshift:scc:hostnetwork
+subjects:
+- kind: ServiceAccount
+  name: spire-server
+  namespace: zero-trust-workload-identity-manager
+

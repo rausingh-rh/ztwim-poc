@@ -1,0 +1,245 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    app.kubernetes.io/component: control-plane
+    app.kubernetes.io/instance: cluster-zero-trust-workload-identity-manager
+    app.kubernetes.io/managed-by: zero-trust-workload-identity-manager
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/part-of: zero-trust-workload-identity-manager
+    app.kubernetes.io/version: 1.14.7
+  name: spire-server
+  namespace: zero-trust-workload-identity-manager
+  ownerReferences:
+  - apiVersion: operator.openshift.io/v1alpha1
+    blockOwnerDeletion: true
+    controller: true
+    kind: SpireServer
+    name: cluster
+    uid: f47cf46d-4efc-485b-a5f6-29dd9fa99a26
+spec:
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  podManagementPolicy: OrderedReady
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: control-plane
+      app.kubernetes.io/instance: cluster-zero-trust-workload-identity-manager
+      app.kubernetes.io/name: spire-server
+  serviceName: spire-server
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: spire-server
+        ztwim.openshift.io/spire-controller-manager-config-hash: 45013c907f112e875b1a757316357d731ee73b0ecd43b1f3575c5561b338b507
+        ztwim.openshift.io/spire-server-config-hash: 3b94446366ea78747d55e7cd80954c1516c629ad7633e35777afb975b893565e
+      creationTimestamp: null
+      labels:
+        app.kubernetes.io/component: control-plane
+        app.kubernetes.io/instance: cluster-zero-trust-workload-identity-manager
+        app.kubernetes.io/managed-by: zero-trust-workload-identity-manager
+        app.kubernetes.io/name: spire-server
+        app.kubernetes.io/part-of: zero-trust-workload-identity-manager
+        app.kubernetes.io/version: 1.14.7
+    spec:
+      containers:
+      - args:
+        - -expandEnv
+        - -config
+        - /run/spire/config/server.conf
+        env:
+        - name: PATH
+          value: /opt/spire/bin:/bin
+        image: registry.redhat.io/zero-trust-workload-identity-manager/spiffe-spire-server-rhel9@sha256:01dcb961e684f94b6d2a9e2762205e6342a42141842b2b8ed3de4ef90ee63184
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 2
+          httpGet:
+            path: /live
+            port: server-healthz
+            scheme: HTTP
+          initialDelaySeconds: 15
+          periodSeconds: 60
+          successThreshold: 1
+          timeoutSeconds: 3
+        name: spire-server
+        ports:
+        - containerPort: 8081
+          name: grpc
+          protocol: TCP
+        - containerPort: 8080
+          name: server-healthz
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /ready
+            port: server-healthz
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources: {}
+        securityContext:
+          readOnlyRootFilesystem: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /tmp/spire-server/private
+          name: spire-server-socket
+        - mountPath: /run/spire/config
+          name: spire-config
+          readOnly: true
+        - mountPath: /run/spire/data
+          name: spire-data
+        - mountPath: /tmp
+          name: server-tmp
+        - mountPath: /run/spire/upstream-agent
+          name: upstream-agent-socket
+      - args:
+        - --config=controller-manager-config.yaml
+        env:
+        - name: ENABLE_WEBHOOKS
+          value: "true"
+        image: registry.redhat.io/zero-trust-workload-identity-manager/spiffe-spire-controller-manager-rhel9@sha256:1aa9668cf828d49221bc59d46aebfa1153e070ad14de49ce001608b299f5bd7b
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: ctrlmgr-healthz
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: spire-controller-manager
+        ports:
+        - containerPort: 9443
+          name: https
+          protocol: TCP
+        - containerPort: 8083
+          name: ctrlmgr-healthz
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /readyz
+            port: ctrlmgr-healthz
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources: {}
+        securityContext:
+          readOnlyRootFilesystem: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /tmp/spire-server/private
+          name: spire-server-socket
+          readOnly: true
+        - mountPath: /controller-manager-config.yaml
+          name: controller-manager-config
+          readOnly: true
+          subPath: controller-manager-config.yaml
+        - mountPath: /tmp
+          name: spire-controller-manager-tmp
+          subPath: spire-controller-manager
+      - args:
+        - -config
+        - /run/spire/config/agent.conf
+        command:
+        - /spire-agent
+        - run
+        image: registry.redhat.io/zero-trust-workload-identity-manager/spiffe-spire-agent-rhel9@sha256:0fd5f289b7dd4d2bb3d0dad22324dc51287e57fdb401889ddb1c27690aec6539
+        imagePullPolicy: IfNotPresent
+        name: spire-agent-upstream
+        resources:
+          limits:
+            memory: 128Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /run/spire/config
+          name: spire-agent-upstream-config
+          readOnly: true
+        - mountPath: /var/run/secrets/tokens
+          name: spire-agent-upstream-token
+          readOnly: true
+        - mountPath: /run/spire/parent-trust-bundle
+          name: parent-trust-bundle
+          readOnly: true
+        - mountPath: /run/spire/upstream-agent
+          name: upstream-agent-socket
+        - mountPath: /run/spire/agent-data
+          name: upstream-agent-data
+      dnsPolicy: ClusterFirstWithHostNet
+      hostNetwork: true
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      serviceAccount: spire-server
+      serviceAccountName: spire-server
+      shareProcessNamespace: true
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - emptyDir: {}
+        name: server-tmp
+      - configMap:
+          defaultMode: 420
+          name: spire-server
+        name: spire-config
+      - emptyDir: {}
+        name: spire-server-socket
+      - emptyDir: {}
+        name: spire-controller-manager-tmp
+      - configMap:
+          defaultMode: 420
+          name: spire-controller-manager
+        name: controller-manager-config
+      - configMap:
+          defaultMode: 420
+          name: spire-agent-upstream
+        name: spire-agent-upstream-config
+      - name: spire-agent-upstream-token
+        projected:
+          defaultMode: 420
+          sources:
+          - serviceAccountToken:
+              audience: spire-server
+              expirationSeconds: 3600
+              path: spire-agent-upstream
+      - name: parent-trust-bundle
+        secret:
+          defaultMode: 420
+          secretName: parent-trust-bundle
+      - emptyDir: {}
+        name: upstream-agent-socket
+      - emptyDir: {}
+        name: upstream-agent-data
+  updateStrategy:
+    rollingUpdate:
+      partition: 0
+    type: RollingUpdate
+  volumeClaimTemplates:
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      creationTimestamp: null
+      name: spire-data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1Gi
+      volumeMode: Filesystem
+    status:
+      phase: Pending

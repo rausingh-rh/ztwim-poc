@@ -1,0 +1,10 @@
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterStaticEntry
+metadata:
+  name: nested-spire-child01-node-alias
+spec:
+  className: zero-trust-workload-identity-manager-spire
+  parentID: spiffe://${TRUST_DOMAIN}/spire/server
+  spiffeID: spiffe://${TRUST_DOMAIN}/downstream/child01
+  selectors:
+  - gcp_iit:project-id:${GCP_PROJECT}
